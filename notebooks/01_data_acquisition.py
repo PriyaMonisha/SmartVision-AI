@@ -44,7 +44,7 @@ except ImportError:
 # True  -> 10 images/class (250 total, ~2 min)
 # False -> 100 images/class (2500 total, ~15-20 min)
 # ================================================================
-FAST_MODE = True
+FAST_MODE = False   # Full run: 100 images/class = 2500 total
 # ================================================================
 print(f"FAST_MODE = {FAST_MODE}")
 print(f"Target: {'10' if FAST_MODE else '100'} images/class x 25 classes = {'250' if FAST_MODE else '2500'} total")
