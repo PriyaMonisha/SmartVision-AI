@@ -29,7 +29,7 @@ def get_train_transforms(image_size: int = 224):
         T.RandomHorizontalFlip(p=0.5),
         T.RandomRotation(degrees=15),
         T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05),
-        T.RandomZoomOut(fill=0, side_range=(1.0, 1.3), p=0.3),
+        T.RandomZoomOut(fill=128, side_range=(1.0, 1.3), p=0.3),  # mid-grey: normalizes to ~0, no boundary signal
         T.Resize((image_size, image_size)),
         T.ToImage(),
         T.ToDtype(torch.float32, scale=True),
