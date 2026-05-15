@@ -1,0 +1,18 @@
+# ============================================================
+# SmartVision AI — HuggingFace Spaces requirements
+# CPU-only PyTorch (no GPU on free tier)
+# ============================================================
+
+# CPU-only PyTorch — requires index-url (Rule 25 equivalent for HF)
+torch==2.3.0 --index-url https://download.pytorch.org/whl/cpu
+torchvision==0.18.0 --index-url https://download.pytorch.org/whl/cpu
+
+ultralytics==8.2.0
+huggingface_hub==0.23.4
+Pillow==10.3.0
+numpy==1.26.4
+streamlit==1.37.0
+plotly==5.22.0
+requests==2.32.3
+PyYAML==6.0.2
+pydantic-settings==2.3.4

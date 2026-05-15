@@ -1,0 +1,48 @@
+# ── Data (large files) ────────────────────────────────────────────────────────
+# Leading slash anchors to project root only (Rule 19 — learned from PatrolIQ DEP-01)
+/data/raw/
+/mlruns/
+
+# ── Model weights (stored on HuggingFace Hub) ────────────────────────────────
+/models/*.pt
+/models/*.pth
+
+# ── YOLO training output ─────────────────────────────────────────────────────
+/runs/
+
+# ── Jupyter notebooks (source is .py; convert with jupytext for Colab) ───────
+notebooks/*.ipynb
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+.env
+
+# ── Testing ──────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── IDE ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Streamlit ────────────────────────────────────────────────────────────────
+.streamlit/secrets.toml
