@@ -137,6 +137,9 @@ balanced  = p > 0.05
 print(f"\nChi-squared balance test:")
 print(f"  chi2 = {chi2:.4f}  |  p = {p:.4f}")
 print(f"  {'OK BALANCED (p>0.05)' if balanced else 'WARNING  IMBALANCED (p<=0.05)'}")
+if all(v == totals[0] for v in totals):
+    print(f"  NOTE: All classes have exactly {totals[0]} images (FAST_MODE or perfectly balanced).")
+    print(f"  Chi2=0, p=1.0 is trivially true. Run with FAST_MODE=False (100/class) for real insight.")
 
 # %% [markdown]
 # ## 3. Sample Image Grid (5×5 — one per class)
@@ -169,50 +172,73 @@ print("Saved: eda_02_sample_grid.png")
 # ## 4. Image Quality Scan (Brightness, Contrast, Aspect Ratio)
 
 # %%
-print("Scanning image quality (train split)...")
+print("Scanning image quality...")
+print("  Brightness/Contrast: classification crops (train)")
+print("  Aspect Ratio: original full detection images (pre-resize)\n")
 
+# Brightness + Contrast from classification crops (train)
 quality_data: list[dict] = []
-for cls in tqdm(CLASSES, desc="Quality scan"):
+for cls in tqdm(CLASSES, desc="Crop quality scan"):
     cls_dir = CLASSIFICATION_DIR / "train" / cls
     if not cls_dir.exists():
         continue
-    for img_path in list(cls_dir.glob("*.jpg"))[:20]:  # sample 20 per class
+    for img_path in list(cls_dir.glob("*.jpg"))[:20]:
         try:
             img  = Image.open(img_path).convert("RGB")
             stat = ImageStat.Stat(img)
-            brightness = sum(stat.mean) / 3
-            contrast   = sum(stat.stddev) / 3
-            w, h       = img.size
             quality_data.append({
                 "class":      cls,
-                "brightness": brightness,
-                "contrast":   contrast,
-                "aspect":     w / h,
-                "width":      w,
-                "height":     h,
+                "brightness": sum(stat.mean) / 3,
+                "contrast":   sum(stat.stddev) / 3,
             })
         except Exception:
             pass
 
+# Aspect Ratio from ORIGINAL full detection images (not 224x224 crops)
+# Classification crops are all 224x224 (ratio=1.0) — scanning them is meaningless
+aspect_data: list[float] = []
+det_img_dir = DETECTION_DIR / "images" / "train"
+if det_img_dir.exists():
+    for img_path in list(det_img_dir.glob("*.jpg"))[:100]:
+        try:
+            img = Image.open(img_path)
+            w, h = img.size
+            aspect_data.append(w / h)
+        except Exception:
+            pass
+print(f"  Aspect ratio scanned from {len(aspect_data)} full detection images")
+
 df_q = pd.DataFrame(quality_data)
+ar   = pd.Series(aspect_data)
 
 fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-fig.suptitle("Image Quality Metrics (Train Sample)", fontweight="bold")
+fig.suptitle("Image Quality Metrics", fontweight="bold")
 
+# Brightness
 axes[0].hist(df_q["brightness"], bins=30, color="#377eb8", edgecolor="white")
-axes[0].axvline(20,  color="red",   linestyle="--", label="Low (< 20)")
-axes[0].axvline(235, color="orange",linestyle="--", label="High (> 235)")
+axes[0].axvline(20,  color="red",    linestyle="--", label="Low (< 20)")
+axes[0].axvline(235, color="orange", linestyle="--", label="High (> 235)")
 axes[0].set_xlabel("Brightness"); axes[0].set_ylabel("Count")
-axes[0].set_title("Brightness Distribution"); axes[0].legend(fontsize=8)
+axes[0].set_title("Brightness (Cropped Objects)"); axes[0].legend(fontsize=8)
 
+# Contrast
 axes[1].hist(df_q["contrast"], bins=30, color="#4daf4a", edgecolor="white")
-axes[1].set_xlabel("Contrast (std-dev)"); axes[1].set_title("Contrast Distribution")
+axes[1].set_xlabel("Contrast (std-dev)")
+axes[1].set_title("Contrast (Cropped Objects)")
 
-axes[2].hist(df_q["aspect"], bins=30, color="#984ea3", edgecolor="white")
-axes[2].axvline(3.0, color="red",  linestyle="--", label="Extreme (> 3:1)")
-axes[2].axvline(1/3, color="red",  linestyle="--", label="Extreme (< 1:3)")
-axes[2].set_xlabel("Aspect Ratio (w/h)"); axes[2].set_title("Aspect Ratio Distribution")
-axes[2].legend(fontsize=8)
+# Aspect Ratio from FULL detection images — meaningful values
+if len(ar) > 0:
+    axes[2].hist(ar, bins=30, color="#984ea3", edgecolor="white")
+    axes[2].axvline(3.0, color="red", linestyle="--", label="Extreme (> 3:1)")
+    axes[2].axvline(1/3, color="red", linestyle="--", label="Extreme (< 1:3)")
+    axes[2].axvline(ar.mean(), color="black", linestyle="-", linewidth=1.5,
+                    label=f"Mean = {ar.mean():.2f}")
+    axes[2].set_title("Aspect Ratio (Full Detection Images)")
+else:
+    axes[2].text(0.5, 0.5, "No detection images found", ha="center", va="center",
+                 transform=axes[2].transAxes)
+    axes[2].set_title("Aspect Ratio (N/A)")
+axes[2].set_xlabel("Aspect Ratio (w/h)"); axes[2].legend(fontsize=8)
 
 plt.tight_layout()
 plt.savefig(FIGURES_DIR / "eda_03_image_quality.png", dpi=150, bbox_inches="tight")
@@ -220,10 +246,10 @@ plt.show()
 
 low_bright  = (df_q["brightness"] < 20).sum()
 high_bright = (df_q["brightness"] > 235).sum()
-extreme_ar  = ((df_q["aspect"] > 3) | (df_q["aspect"] < 1/3)).sum()
+extreme_ar  = ((ar > 3) | (ar < 1/3)).sum() if len(ar) > 0 else 0
 print(f"Low-brightness images  : {low_bright} ({low_bright/len(df_q)*100:.1f}%)")
 print(f"High-brightness images : {high_bright}")
-print(f"Extreme aspect ratios  : {extreme_ar}")
+print(f"Extreme aspect ratios  : {extreme_ar} / {len(ar)} full images")
 print("Saved: eda_03_image_quality.png")
 
 # %% [markdown]
@@ -356,38 +382,67 @@ if not df_bbox.empty:
 # Validated against actual confusion matrix after training.
 
 # %%
-# Compute mean bbox area per class (proxy for object scale/visibility)
+# Compute mean bbox area per class (proxy for object scale)
 mean_area: dict[str, float] = {}
 for cls in CLASSES:
     subset = df_bbox[df_bbox["class"] == cls]["area_norm"] if not df_bbox.empty else pd.Series([], dtype=float)
     mean_area[cls] = float(subset.mean()) if len(subset) > 0 else 0.1
 
-# Group by supercategory for visual similarity analysis
-SUPERCATEGORIES: dict[str, list[str]] = {
-    "vehicle":   ["car", "truck", "bus", "motorcycle", "bicycle", "airplane"],
-    "outdoor":   ["traffic light", "stop sign", "bench"],
-    "animal":    ["dog", "cat", "horse", "bird", "cow", "elephant"],
-    "food":      ["bottle", "cup", "bowl", "pizza", "cake"],
-    "furniture": ["chair", "couch", "potted plant", "bed"],
-    "person":    ["person"],
+# Difficulty based on:
+# 1. Visually similar neighbours within same supercategory (shape/size overlap)
+# 2. Classes that are visually DISTINCT even in same group are NOT hard
+
+# Manually defined visually-similar pairs (classes commonly confused)
+VISUALLY_SIMILAR: dict[str, list[str]] = {
+    "car":          ["truck", "bus"],
+    "truck":        ["car", "bus"],
+    "bus":          ["car", "truck"],
+    "motorcycle":   ["bicycle"],
+    "bicycle":      ["motorcycle"],
+    "airplane":     [],              # unique shape — easy despite being vehicle
+    "dog":          ["cat"],
+    "cat":          ["dog"],
+    "horse":        ["cow"],
+    "cow":          ["horse"],
+    "bird":         [],              # small, distinct — medium
+    "elephant":     [],              # unique size/shape — easy
+    "cup":          ["bowl", "bottle"],
+    "bowl":         ["cup"],
+    "bottle":       ["cup"],
+    "pizza":        [],              # distinct food — medium
+    "cake":         [],              # distinct food — medium
+    "chair":        ["couch", "bench"],
+    "couch":        ["chair", "bed"],
+    "bench":        ["chair"],
+    "bed":          ["couch"],
+    "potted plant": [],
+    "traffic light":[],
+    "stop sign":    [],
+    "person":       [],
 }
-cls_to_super = {cls: sup for sup, clss in SUPERCATEGORIES.items() for cls in clss}
 
 difficulty: dict[str, dict] = {}
 for cls in CLASSES:
-    same_group = [c for c in SUPERCATEGORIES.get(cls_to_super.get(cls, ""), []) if c != cls]
-    size_ratio_scores = []
-    for other in same_group:
-        a1 = mean_area.get(cls,   0.1)
+    similar = VISUALLY_SIMILAR.get(cls, [])
+    # Penalise further if size is similar to neighbours
+    size_penalties = []
+    for other in similar:
+        a1 = mean_area.get(cls, 0.1)
         a2 = mean_area.get(other, 0.1)
         ratio = min(a1, a2) / max(a1, a2) if max(a1, a2) > 0 else 0
-        size_ratio_scores.append(ratio)
-    avg_sim   = np.mean(size_ratio_scores) if size_ratio_scores else 0
-    predicted = "hard" if (len(same_group) >= 2 and avg_sim > 0.5) else "medium" if same_group else "easy"
+        size_penalties.append(ratio)
+    avg_size_sim = np.mean(size_penalties) if size_penalties else 0
+
+    if len(similar) >= 2 and avg_size_sim > 0.6:
+        predicted = "hard"
+    elif len(similar) >= 1:
+        predicted = "medium"
+    else:
+        predicted = "easy"
+
     difficulty[cls] = {
-        "supercategory":   cls_to_super.get(cls, "other"),
-        "similar_classes": same_group,
-        "avg_size_similarity": round(float(avg_sim), 4),
+        "visually_similar_to": similar,
+        "avg_size_similarity":  round(float(avg_size_sim), 4),
         "predicted_difficulty": predicted,
     }
 

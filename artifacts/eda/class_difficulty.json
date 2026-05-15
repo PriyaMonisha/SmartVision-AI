@@ -1,0 +1,165 @@
+{
+  "person": {
+    "visually_similar_to": [],
+    "avg_size_similarity": 0.0,
+    "predicted_difficulty": "easy"
+  },
+  "bicycle": {
+    "visually_similar_to": [
+      "motorcycle"
+    ],
+    "avg_size_similarity": 0.4138,
+    "predicted_difficulty": "medium"
+  },
+  "car": {
+    "visually_similar_to": [
+      "truck",
+      "bus"
+    ],
+    "avg_size_similarity": 0.775,
+    "predicted_difficulty": "hard"
+  },
+  "motorcycle": {
+    "visually_similar_to": [
+      "bicycle"
+    ],
+    "avg_size_similarity": 0.4138,
+    "predicted_difficulty": "medium"
+  },
+  "airplane": {
+    "visually_similar_to": [],
+    "avg_size_similarity": 0.0,
+    "predicted_difficulty": "easy"
+  },
+  "bus": {
+    "visually_similar_to": [
+      "car",
+      "truck"
+    ],
+    "avg_size_similarity": 0.7671,
+    "predicted_difficulty": "hard"
+  },
+  "truck": {
+    "visually_similar_to": [
+      "car",
+      "bus"
+    ],
+    "avg_size_similarity": 0.8387,
+    "predicted_difficulty": "hard"
+  },
+  "traffic light": {
+    "visually_similar_to": [],
+    "avg_size_similarity": 0.0,
+    "predicted_difficulty": "easy"
+  },
+  "stop sign": {
+    "visually_similar_to": [],
+    "avg_size_similarity": 0.0,
+    "predicted_difficulty": "easy"
+  },
+  "bench": {
+    "visually_similar_to": [
+      "chair"
+    ],
+    "avg_size_similarity": 0.9828,
+    "predicted_difficulty": "medium"
+  },
+  "bird": {
+    "visually_similar_to": [],
+    "avg_size_similarity": 0.0,
+    "predicted_difficulty": "easy"
+  },
+  "cat": {
+    "visually_similar_to": [
+      "dog"
+    ],
+    "avg_size_similarity": 0.9174,
+    "predicted_difficulty": "medium"
+  },
+  "dog": {
+    "visually_similar_to": [
+      "cat"
+    ],
+    "avg_size_similarity": 0.9174,
+    "predicted_difficulty": "medium"
+  },
+  "horse": {
+    "visually_similar_to": [
+      "cow"
+    ],
+    "avg_size_similarity": 0.9752,
+    "predicted_difficulty": "medium"
+  },
+  "cow": {
+    "visually_similar_to": [
+      "horse"
+    ],
+    "avg_size_similarity": 0.9752,
+    "predicted_difficulty": "medium"
+  },
+  "elephant": {
+    "visually_similar_to": [],
+    "avg_size_similarity": 0.0,
+    "predicted_difficulty": "easy"
+  },
+  "bottle": {
+    "visually_similar_to": [
+      "cup"
+    ],
+    "avg_size_similarity": 0.7142,
+    "predicted_difficulty": "medium"
+  },
+  "cup": {
+    "visually_similar_to": [
+      "bowl",
+      "bottle"
+    ],
+    "avg_size_similarity": 0.61,
+    "predicted_difficulty": "hard"
+  },
+  "bowl": {
+    "visually_similar_to": [
+      "cup"
+    ],
+    "avg_size_similarity": 0.5059,
+    "predicted_difficulty": "medium"
+  },
+  "pizza": {
+    "visually_similar_to": [],
+    "avg_size_similarity": 0.0,
+    "predicted_difficulty": "easy"
+  },
+  "cake": {
+    "visually_similar_to": [],
+    "avg_size_similarity": 0.0,
+    "predicted_difficulty": "easy"
+  },
+  "chair": {
+    "visually_similar_to": [
+      "couch",
+      "bench"
+    ],
+    "avg_size_similarity": 0.7504,
+    "predicted_difficulty": "hard"
+  },
+  "couch": {
+    "visually_similar_to": [
+      "chair",
+      "bed"
+    ],
+    "avg_size_similarity": 0.6232,
+    "predicted_difficulty": "hard"
+  },
+  "potted plant": {
+    "visually_similar_to": [],
+    "avg_size_similarity": 0.0,
+    "predicted_difficulty": "easy"
+  },
+  "bed": {
+    "visually_similar_to": [
+      "couch"
+    ],
+    "avg_size_similarity": 0.7283,
+    "predicted_difficulty": "medium"
+  }
+}
