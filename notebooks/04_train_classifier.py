@@ -38,7 +38,11 @@ try:
     sys.path.insert(0, COLAB_ROOT)
     IN_COLAB = True
     print(f"Running in Colab — project at {COLAB_ROOT}")
-    # !pip install -q ultralytics huggingface_hub pydantic-settings scikit-learn mlflow
+    import subprocess
+    subprocess.run(["pip", "install", "-q",
+                    "mlflow", "ultralytics", "huggingface_hub",
+                    "pydantic-settings", "scikit-learn"], check=True)
+    print("Dependencies installed")
 except Exception:
     # ImportError  → not in Colab (running locally in terminal)
     # MessageError → Drive auth failed (click the auth popup in Colab, then re-run this cell)
