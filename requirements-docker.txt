@@ -3,8 +3,8 @@
 # Excludes training deps (scipy, matplotlib, seaborn, datasets)
 # ============================================================
 
-torch==2.3.0
-torchvision==0.18.0
+torch==2.4.0
+torchvision==0.19.0
 ultralytics==8.2.0
 huggingface_hub==0.23.4
 Pillow==10.3.0

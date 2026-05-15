@@ -13,9 +13,6 @@ from config import (
     CLASS_TO_IDX,
     CLASSES,
     DATA_PROCESSED_DIR,
-    FAST_IMAGES_PER_CLASS,
-    IMAGE_SIZE,
-    IMAGES_PER_CLASS,
     MODEL_CONFIGS,
 )
 
