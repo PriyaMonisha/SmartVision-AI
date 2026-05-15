@@ -1,6 +1,6 @@
 # filename: config.py
 # purpose:  Central configuration — all constants, paths, hyperparameters for SmartVision AI
-# version:  1.0
+# version:  2.0
 
 import os
 from pathlib import Path
@@ -24,7 +24,6 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Re-export as module-level names for backward compatibility
 FAST_MODE   = settings.fast_mode
 FASTAPI_URL = settings.fastapi_url
 HF_TOKEN    = settings.hf_token
@@ -36,61 +35,78 @@ REDIS_PORT  = settings.redis_port
 RANDOM_STATE = 42
 
 # ── Model dimensions ─────────────────────────────────────────────────────────
-IMAGE_SIZE      = 224   # CNN input size (px)
-YOLO_IMAGE_SIZE = 640   # YOLO input size (px)
+IMAGE_SIZE      = 224
+YOLO_IMAGE_SIZE = 640
 NUM_CLASSES     = 25
 
-# ── 25 Classes — GROUND TRUTH ordering (verified against COCO 2017) ──────────
-# Index = class_id used by both CNN classifiers and YOLO labels
-# Comments show COCO category_id for cross-reference and auditing
+# ── Class definitions ─────────────────────────────────────────────────────────
+# Source of truth for class ordering (0-24).
+# ORDER matches mentor's notebook (by ascending HF category ID).
+# Mentor notebook included 'train' (vehicle) making it 26 — we exclude it (project PDF = 25).
 CLASSES = [
-    "person",        # 0  — COCO ID: 1
-    "bicycle",       # 1  — COCO ID: 2
-    "car",           # 2  — COCO ID: 3
-    "motorcycle",    # 3  — COCO ID: 4
-    "airplane",      # 4  — COCO ID: 5
-    "bus",           # 5  — COCO ID: 6
-    "truck",         # 6  — COCO ID: 8
-    "bird",          # 7  — COCO ID: 16
-    "cat",           # 8  — COCO ID: 17
-    "dog",           # 9  — COCO ID: 18
-    "horse",         # 10 — COCO ID: 19
-    "cow",           # 11 — COCO ID: 21
-    "elephant",      # 12 — COCO ID: 22
-    "bench",         # 13 — COCO ID: 15
-    "traffic light", # 14 — COCO ID: 10
-    "stop sign",     # 15 — COCO ID: 13
-    "bottle",        # 16 — COCO ID: 44
-    "cup",           # 17 — COCO ID: 47
-    "bowl",          # 18 — COCO ID: 51
-    "chair",         # 19 — COCO ID: 62
-    "couch",         # 20 — COCO ID: 63
-    "potted plant",  # 21 — COCO ID: 64
-    "bed",           # 22 — COCO ID: 65
-    "pizza",         # 23 — COCO ID: 59
-    "cake",          # 24 — COCO ID: 61
+    "person",        # 0
+    "bicycle",       # 1
+    "car",           # 2
+    "motorcycle",    # 3
+    "airplane",      # 4
+    "bus",           # 5
+    "truck",         # 6  (HF cat 7 — skipping 'train' at HF cat 6)
+    "traffic light", # 7
+    "stop sign",     # 8
+    "bench",         # 9
+    "bird",          # 10
+    "cat",           # 11
+    "dog",           # 12
+    "horse",         # 13
+    "cow",           # 14
+    "elephant",      # 15
+    "bottle",        # 16
+    "cup",           # 17
+    "bowl",          # 18
+    "pizza",         # 19
+    "cake",          # 20
+    "chair",         # 21
+    "couch",         # 22
+    "potted plant",  # 23
+    "bed",           # 24
 ]
 
-# Maps COCO annotation category_id → our 0-24 class index
-# Used by loader.py for both classification crops and YOLO label generation
-EXPECTED_COCO_CATEGORIES = {
-    1: "person",        2: "bicycle",      3: "car",         4: "motorcycle",
-    5: "airplane",      6: "bus",          8: "truck",
-    10: "traffic light", 13: "stop sign",  15: "bench",
-    16: "bird",         17: "cat",         18: "dog",        19: "horse",
-    21: "cow",          22: "elephant",
-    44: "bottle",       47: "cup",         51: "bowl",
-    59: "pizza",        61: "cake",
-    62: "chair",        63: "couch",       64: "potted plant", 65: "bed",
+# Maps class name → HuggingFace detection-datasets/coco 0-indexed category ID.
+# The HF dataset uses 0-indexed IDs (0-79), NOT original COCO annotation IDs (1-90 with gaps).
+# This is the primary lookup used during streaming in 01_data_acquisition.py.
+SELECTED_CLASSES: dict[str, int] = {
+    "person":        0,
+    "bicycle":       1,
+    "car":           2,
+    "motorcycle":    3,
+    "airplane":      4,
+    "bus":           5,
+    "truck":         7,   # HF ID 7 — HF ID 6 = 'train' (vehicle), excluded
+    "traffic light": 9,
+    "stop sign":     11,
+    "bench":         13,
+    "bird":          14,
+    "cat":           15,
+    "dog":           16,
+    "horse":         17,
+    "cow":           19,
+    "elephant":      20,
+    "bottle":        39,
+    "cup":           41,
+    "bowl":          45,
+    "pizza":         53,
+    "cake":          55,
+    "chair":         56,
+    "couch":         57,
+    "potted plant":  58,
+    "bed":           59,
 }
 
-COCO_ID_TO_CLASS_IDX: dict[int, int] = {
-    1: 0,   2: 1,   3: 2,   4: 3,   5: 4,   6: 5,   8: 6,
-    16: 7,  17: 8,  18: 9,  19: 10, 21: 11, 22: 12,
-    15: 13, 10: 14, 13: 15,
-    44: 16, 47: 17, 51: 18,
-    62: 19, 63: 20, 64: 21, 65: 22,
-    59: 23, 61: 24,
+# Reverse mapping: HF category ID → our sequential class index (0-24).
+# Used when iterating annotations to assign YOLO class IDs.
+HF_CATEGORY_TO_CLASS_IDX: dict[int, int] = {
+    hf_id: CLASSES.index(cls_name)
+    for cls_name, hf_id in SELECTED_CLASSES.items()
 }
 
 CLASS_TO_IDX: dict[str, int] = {cls: idx for idx, cls in enumerate(CLASSES)}
@@ -98,10 +114,10 @@ CLASS_TO_IDX: dict[str, int] = {cls: idx for idx, cls in enumerate(CLASSES)}
 # ── Dataset splits ────────────────────────────────────────────────────────────
 TRAIN_SPLIT, VAL_SPLIT, TEST_SPLIT = 0.70, 0.15, 0.15
 IMAGES_PER_CLASS      = 100
-FAST_IMAGES_PER_CLASS = 10   # dev runs
+FAST_IMAGES_PER_CLASS = 10
 
 # ── Per-model training config ─────────────────────────────────────────────────
-# VGG16 batch=16: model ~550MB, batch=32 is borderline on T4 (Rule 25)
+# VGG16 batch=16: model ~550MB, batch=32 is borderline on T4 (memory budget)
 MODEL_CONFIGS: dict[str, dict] = {
     "vgg16":        {"lr": 0.001,  "epochs": 20, "batch": 16, "unfreeze": "none"},
     "resnet50":     {"lr": 0.0001, "epochs": 25, "batch": 32, "unfreeze": "layer3+"},
@@ -116,34 +132,31 @@ YOLO_CONF_THRESHOLD = 0.5
 YOLO_IOU_THRESHOLD  = 0.45
 
 # ── FastAPI / serving ─────────────────────────────────────────────────────────
-FASTAPI_HOST               = "0.0.0.0"
-FASTAPI_PORT               = 8000
-INFERENCE_TIMEOUT_SECONDS  = 30
+FASTAPI_HOST              = "0.0.0.0"
+FASTAPI_PORT              = 8000
+INFERENCE_TIMEOUT_SECONDS = 30
 
 # ── MLflow ────────────────────────────────────────────────────────────────────
-MLFLOW_TRACKING_URI        = "sqlite:///mlruns/mlflow.db"
-MLFLOW_EXPERIMENT_NAME     = "smartvision_classification"
-MLFLOW_EXPERIMENT_YOLO     = "smartvision_detection"
+MLFLOW_TRACKING_URI    = "sqlite:///mlruns/mlflow.db"
+MLFLOW_EXPERIMENT_NAME = "smartvision_classification"
+MLFLOW_EXPERIMENT_YOLO = "smartvision_detection"
 
 # ── Drift detection ───────────────────────────────────────────────────────────
 KS_DRIFT_ALERT_THRESHOLD = 0.10
-KS_MIN_SAMPLES_FOR_TEST  = 100   # minimum live samples before running KS
+KS_MIN_SAMPLES_FOR_TEST  = 100
 
 # ── Streamlit input validation ────────────────────────────────────────────────
 MAX_IMAGE_SIZE_MB    = 10
 MAX_IMAGE_RESOLUTION = 1920
 
 # ── Redis ─────────────────────────────────────────────────────────────────────
-REDIS_TTL_CLASSIFY  = 86400   # 24h for classification results
-REDIS_TTL_DETECT    = 3600    # 1h for detection results
+REDIS_TTL_CLASSIFY = 86400   # 24h
+REDIS_TTL_DETECT   = 3600    # 1h
 
 # ── Memory budget (documented for Docker mem_limit) ───────────────────────────
-# VGG16 classifier:          ~550MB
-# ResNet50 classifier:       ~100MB
-# MobileNetV2 classifier:    ~14MB
-# EfficientNetB0 classifier: ~20MB
-# YOLOv8n detector:          ~6MB
-# Total FastAPI service:     ~690MB → Docker mem_limit: 1.5g
+# VGG16:          ~550MB | ResNet50: ~100MB | MobileNetV2: ~14MB
+# EfficientNetB0: ~20MB  | YOLOv8n:  ~6MB
+# Total FastAPI:  ~690MB → Docker mem_limit: 1.5g
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR            = Path(__file__).parent
