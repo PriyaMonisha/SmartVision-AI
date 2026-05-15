@@ -30,16 +30,19 @@ except NameError:
         PROJECT_ROOT = Path.cwd()  # fallback: running from project root
 sys.path.insert(0, str(PROJECT_ROOT))
 
+IN_COLAB = False
 try:
     from google.colab import drive
     drive.mount('/content/drive')
     COLAB_ROOT = '/content/drive/MyDrive/SmartVisionAI'
     sys.path.insert(0, COLAB_ROOT)
-    print("Running in Colab")
-    # Install dependencies in Colab
+    IN_COLAB = True
+    print(f"Running in Colab — project at {COLAB_ROOT}")
     # !pip install -q ultralytics huggingface_hub pydantic-settings scikit-learn mlflow
-except ImportError:
-    print("Running locally")
+except Exception:
+    # ImportError  → not in Colab (running locally in terminal)
+    # MessageError → Drive auth failed (click the auth popup in Colab, then re-run this cell)
+    print("Running locally  (or Drive auth pending — re-run cell after authorising)")
 
 # %%
 # ================================================================

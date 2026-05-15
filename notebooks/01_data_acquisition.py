@@ -37,7 +37,7 @@ try:
     sys.path.insert(0, COLAB_ROOT)
     os.chdir(COLAB_ROOT)
     print("Running in Colab")
-except ImportError:
+except Exception:  # ImportError=not in Colab; MessageError=Drive auth failed (re-run cell after authorising)
     print("Running locally")
 
 # Install if missing (already in requirements.txt for local; pre-installed on Colab)
