@@ -21,7 +21,12 @@ from pathlib import Path
 # Add project root to path so config.py and src/ are importable
 # Works whether running as: python notebooks/01_data_acquisition.py  (terminal)
 #                        or: in Colab after mounting Drive
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent  # terminal
+except NameError:
+    PROJECT_ROOT = Path.cwd().parent  # Colab/Jupyter — assumes notebooks/ subdir
+    if not (PROJECT_ROOT / "config.py").exists():
+        PROJECT_ROOT = Path.cwd()  # fallback: running from project root
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Optional Colab setup — ignored when running locally in terminal

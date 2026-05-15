@@ -22,7 +22,12 @@
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent  # terminal
+except NameError:
+    PROJECT_ROOT = Path.cwd().parent  # Colab/Jupyter — assumes notebooks/ subdir
+    if not (PROJECT_ROOT / "config.py").exists():
+        PROJECT_ROOT = Path.cwd()  # fallback: running from project root
 sys.path.insert(0, str(PROJECT_ROOT))
 
 try:

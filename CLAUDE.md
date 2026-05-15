@@ -156,6 +156,8 @@ Docker Compose | pytest | GitHub Actions CI
 | 36 | torch.load(..., weights_only=True) everywhere |
 | 37 | HfApi().upload_file(); create_repo(exist_ok=True) before first upload |
 | 38 | @st.cache_data for artifact loading; @st.cache_resource for models |
+| 39 | torch.load(..., weights_only=True) everywhere — security + FutureWarning |
+| 40 | __file__ undefined in Jupyter/Colab — wrap PROJECT_ROOT in try/except NameError |
 
 ---
 
