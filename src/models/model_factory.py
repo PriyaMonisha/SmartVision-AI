@@ -36,12 +36,13 @@ def get_model(name: str, num_classes: int = 25):
 
     if name == "vgg16":
         model = models.vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-        # Freeze all convolutional features — only train the classifier head
-        for param in model.features.parameters():
+        # Freeze ALL parameters first (features + classifier[0-5])
+        for param in model.parameters():
             param.requires_grad = False
-        # Replace the final FC layer (4096 → num_classes)
+        # Replace classifier[6] — new layer defaults to requires_grad=True
+        # Result: only ~102K params trainable (the 4096→25 head), not 118M
         model.classifier[6] = nn.Linear(4096, num_classes)
-        logger.info(f"VGG16 loaded (frozen features, {num_classes}-class head)")
+        logger.info(f"VGG16 loaded (all frozen, {num_classes}-class head only)")
 
     elif name == "resnet50":
         model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
