@@ -10,19 +10,25 @@
 # Runtime: ~15-20 min for full 2500 images | ~2 min for FAST_MODE (250 images)
 
 # %% [markdown]
-# ## Step 0: Colab Setup
+# ## Step 0: Environment Setup
+# Run locally:  `python notebooks/01_data_acquisition.py`
+# Run in Colab: upload project to Drive, set PROJECT_ROOT below, then run
 
 # %%
-# Mount Google Drive for persistence
-from google.colab import drive
-drive.mount('/content/drive')
-
 import sys, os
-PROJECT_ROOT = '/content/drive/MyDrive/SmartVisionAI'  # adjust if different
-sys.path.insert(0, PROJECT_ROOT)
-os.chdir(PROJECT_ROOT)
 
-# Install if needed (datasets + pillow usually pre-installed on Colab)
+# Optional Colab setup — ignored when running locally in terminal
+try:
+    from google.colab import drive
+    drive.mount('/content/drive')
+    PROJECT_ROOT = '/content/drive/MyDrive/SmartVisionAI'  # adjust if needed
+    sys.path.insert(0, PROJECT_ROOT)
+    os.chdir(PROJECT_ROOT)
+    print("Running in Colab")
+except ImportError:
+    print("Running locally")  # project root already on path via cwd
+
+# Install if missing (already in requirements.txt for local; pre-installed on Colab)
 # !pip install -q datasets pillow tqdm pydantic-settings
 
 # %%

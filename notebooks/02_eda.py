@@ -14,15 +14,21 @@
 
 # %% [markdown]
 # ## Setup
+# Run locally:  `python notebooks/02_eda.py`
+# Run in Colab: upload project to Drive, set PROJECT_ROOT below
 
 # %%
-from google.colab import drive
-drive.mount('/content/drive')
-
 import sys, os
-PROJECT_ROOT = '/content/drive/MyDrive/SmartVisionAI'
-sys.path.insert(0, PROJECT_ROOT)
-os.chdir(PROJECT_ROOT)
+
+try:
+    from google.colab import drive
+    drive.mount('/content/drive')
+    PROJECT_ROOT = '/content/drive/MyDrive/SmartVisionAI'
+    sys.path.insert(0, PROJECT_ROOT)
+    os.chdir(PROJECT_ROOT)
+    print("Running in Colab")
+except ImportError:
+    print("Running locally")
 
 # %%
 import json
