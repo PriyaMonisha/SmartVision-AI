@@ -59,8 +59,8 @@ def verify_coco_mapping() -> None:
     # No duplicate HF IDs
     hf_ids = list(SELECTED_CLASSES.values())
     assert len(hf_ids) == len(set(hf_ids)), "Duplicate HF category IDs in SELECTED_CLASSES"
-    logger.info("✅ COCO mapping verified: 25 classes, no duplicates")
-    print("✅ COCO mapping verified (25 classes, HF 0-indexed IDs, no duplicates)")
+    logger.info("COCO mapping verified: 25 classes, no duplicates")
+    print("COCO mapping OK: 25 classes, HF 0-indexed IDs, no duplicates")
 
 
 # ── Checkpoint / resume ───────────────────────────────────────────────────────
