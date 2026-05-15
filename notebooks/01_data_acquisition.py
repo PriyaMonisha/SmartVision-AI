@@ -1,6 +1,6 @@
 # %% [markdown]
 # # SmartVision AI — Section 2: Dataset Acquisition
-# **Run in Google Colab (CPU is fine — no GPU needed for this step)**
+# **Run in terminal (CPU is fine — no GPU needed for this step)**
 #
 # Based on mentor's reference notebook with these improvements:
 # - 25 classes (mentor's notebook accidentally included 26 by adding 'train' vehicle)
@@ -16,17 +16,24 @@
 
 # %%
 import sys, os
+from pathlib import Path
+
+# Add project root to path so config.py and src/ are importable
+# Works whether running as: python notebooks/01_data_acquisition.py  (terminal)
+#                        or: in Colab after mounting Drive
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 # Optional Colab setup — ignored when running locally in terminal
 try:
     from google.colab import drive
     drive.mount('/content/drive')
-    PROJECT_ROOT = '/content/drive/MyDrive/SmartVisionAI'  # adjust if needed
-    sys.path.insert(0, PROJECT_ROOT)
-    os.chdir(PROJECT_ROOT)
+    COLAB_ROOT = '/content/drive/MyDrive/SmartVisionAI'  # adjust if needed
+    sys.path.insert(0, COLAB_ROOT)
+    os.chdir(COLAB_ROOT)
     print("Running in Colab")
 except ImportError:
-    print("Running locally")  # project root already on path via cwd
+    print("Running locally")
 
 # Install if missing (already in requirements.txt for local; pre-installed on Colab)
 # !pip install -q datasets pillow tqdm pydantic-settings
@@ -34,13 +41,13 @@ except ImportError:
 # %%
 # ================================================================
 # FAST_MODE — LOCAL variable, passed as argument to functions
-# True  → 10 images/class (250 total, ~2 min)
-# False → 100 images/class (2500 total, ~15-20 min)
+# True  -> 10 images/class (250 total, ~2 min)
+# False -> 100 images/class (2500 total, ~15-20 min)
 # ================================================================
 FAST_MODE = True
 # ================================================================
 print(f"FAST_MODE = {FAST_MODE}")
-print(f"Target: {'10' if FAST_MODE else '100'} images/class × 25 classes = {'250' if FAST_MODE else '2500'} total")
+print(f"Target: {'10' if FAST_MODE else '100'} images/class x 25 classes = {'250' if FAST_MODE else '2500'} total")
 
 # %% [markdown]
 # ## Step 1: Imports and Config
@@ -69,7 +76,7 @@ from src.data.loader import (
 )
 from src.utils.helpers import save_json, load_json, create_hub_repo
 
-print("✅ Imports OK")
+print("OK Imports OK")
 print(f"NUM_CLASSES = {NUM_CLASSES}")
 print(f"Classes: {CLASSES}")
 
@@ -100,7 +107,7 @@ print(f"objects keys:      {list(sample['objects'].keys())}")
 print(f"num annotations:   {len(sample['objects']['bbox'])}")
 print(f"categories:        {sample['objects']['category']}")
 print(f"first bbox:        {sample['objects']['bbox'][0]}")
-print("✅ Schema confirmed — image=PIL, objects.bbox=[x,y,w,h], objects.category=HF 0-indexed")
+print("OK Schema confirmed — image=PIL, objects.bbox=[x,y,w,h], objects.category=HF 0-indexed")
 
 # %% [markdown]
 # ## Step 4: Collect Images from Stream (Checkpoint/Resume)
@@ -129,7 +136,7 @@ class_counts = dict(progress)
 
 # %%
 if remaining_classes:
-    print(f"\n⏳ Streaming COCO dataset...")
+    print(f"\n Streaming COCO dataset...")
     print(f"   (processes ~10k images to collect {len(remaining_classes)} classes)")
     print()
 
@@ -146,11 +153,11 @@ if remaining_classes:
 
     for idx, item in enumerate(dataset):
         if images_processed >= MAX_ITER:
-            print(f"⚠️  Reached safety limit of {MAX_ITER} iterations")
+            print(f"WARNING  Reached safety limit of {MAX_ITER} iterations")
             break
 
         if not remaining_classes:
-            print("🎉 All classes collected!")
+            print(" All classes collected!")
             break
 
         images_processed += 1
@@ -180,36 +187,46 @@ if remaining_classes:
 
             if class_counts[class_name] >= target:
                 remaining_classes.remove(class_name)
-                print(f"   ✅ {class_name}: {class_counts[class_name]} images "
+                print(f"   OK {class_name}: {class_counts[class_name]} images "
                       f"({NUM_CLASSES - len(remaining_classes)}/25 done)")
 
-    print(f"\n📊 Stream complete: processed {images_processed} images")
+    print(f"\n Stream complete: processed {images_processed} images")
 
 else:
-    print("✅ All classes already collected per checkpoint. Reload images from disk if needed.")
+    print("OK All classes already collected per checkpoint. Reload images from disk if needed.")
 
 # %%
 # Summary
 print("\n=== Collection Summary ===")
 for cls in CLASSES:
     count = len(class_images[cls]) + progress.get(cls, 0)
-    status = "✅" if count >= target else f"⚠️  ({count}/{target})"
+    status = "OK" if count >= target else f"WARNING  ({count}/{target})"
     print(f"  {status}  {cls}")
 
 # %% [markdown]
 # ## Step 5: Split Data (70/15/15)
+# Skipped if resuming from checkpoint (images already on disk from a previous run)
 
 # %%
-print(f"Splitting data: {int(TRAIN_SPLIT*100)}% train / {int(VAL_SPLIT*100)}% val / 15% test")
+HAS_NEW_IMAGES = any(len(class_images[cls]) > 0 for cls in CLASSES)
 
-train_data: dict[str, list] = {}
-val_data:   dict[str, list] = {}
-test_data:  dict[str, list] = {}
+if not HAS_NEW_IMAGES:
+    print("Resuming: all images already on disk. Skipping split/save steps.")
+    print("Skip to Step 7 (data.yaml) to regenerate config if needed.")
+else:
+    print(f"Splitting data: {int(TRAIN_SPLIT*100)}% train / {int(VAL_SPLIT*100)}% val / 15% test")
 
-for class_name in CLASSES:
+train_data: dict[str, list] = {cls: [] for cls in CLASSES}
+val_data:   dict[str, list] = {cls: [] for cls in CLASSES}
+test_data:  dict[str, list] = {cls: [] for cls in CLASSES}
+
+if not HAS_NEW_IMAGES:
+    pass  # split_data dicts stay empty — save steps will be skipped below
+
+for class_name in CLASSES if HAS_NEW_IMAGES else []:
     items = class_images[class_name]
     if not items:
-        print(f"  ⚠️  {class_name}: no new images (relies on previous checkpoint data)")
+        print(f"  WARNING  {class_name}: no new images (relies on previous checkpoint data)")
         train_data[class_name] = []
         val_data[class_name]   = []
         test_data[class_name]  = []
@@ -227,37 +244,40 @@ for class_name in CLASSES:
           f"val={len(val_data[class_name])} test={len(test_data[class_name])}")
 
 # %% [markdown]
-# ## Step 6A: Save Classification Images (Cropped 224×224)
+# ## Step 6A: Save Classification Images (Cropped 224x224)
 
 # %%
 classification_dir = DATA_PROCESSED_DIR / "classification"
 classification_stats = {"train": 0, "val": 0, "test": 0}
 
-print("Saving classification crops (224×224)...\n")
+if not HAS_NEW_IMAGES:
+    # Read from disk — images already saved in a previous run
+    for split in ["train", "val", "test"]:
+        classification_stats[split] = len(list((classification_dir / split).rglob("*.jpg")))
+    print("Resume: classification images already on disk.")
+else:
+    print("Saving classification crops (224x224)...\n")
 
-for split_name, split_data in [("train", train_data), ("val", val_data), ("test", test_data)]:
-    print(f"  Processing {split_name.upper()}...")
-    for class_name in tqdm(CLASSES, desc=f"    {split_name}", leave=False):
-        items = split_data.get(class_name, [])
-        class_id = SELECTED_CLASSES[class_name]
-
-        for img_idx, item in enumerate(items):
-            img         = item["image"]
-            bboxes      = item["annotations"]["bbox"]
-            categories  = item["annotations"]["category"]
-
-            # Find first bbox matching this class
-            for bbox, cat_id in zip(bboxes, categories):
-                if cat_id == class_id:
-                    # Determine global idx for filename uniqueness
-                    global_idx = progress.get(class_name, 0) + img_idx
-                    saved = save_classification_crop(
-                        img, bbox, class_name, split_name,
-                        global_idx, classification_dir,
-                    )
-                    if saved:
-                        classification_stats[split_name] += 1
-                    break
+if HAS_NEW_IMAGES:
+    for split_name, split_data in [("train", train_data), ("val", val_data), ("test", test_data)]:
+        print(f"  Processing {split_name.upper()}...")
+        for class_name in tqdm(CLASSES, desc=f"    {split_name}", leave=False):
+            items = split_data.get(class_name, [])
+            class_id = SELECTED_CLASSES[class_name]
+            for img_idx, item in enumerate(items):
+                img        = item["image"]
+                bboxes     = item["annotations"]["bbox"]
+                categories = item["annotations"]["category"]
+                for bbox, cat_id in zip(bboxes, categories):
+                    if cat_id == class_id:
+                        global_idx = progress.get(class_name, 0) + img_idx
+                        saved = save_classification_crop(
+                            img, bbox, class_name, split_name,
+                            global_idx, classification_dir,
+                        )
+                        if saved:
+                            classification_stats[split_name] += 1
+                        break
 
 print()
 print("=== Classification Dataset ===")
@@ -270,7 +290,7 @@ print(f"  Total: {sum(classification_stats.values())} images")
 for cls in CLASSES:
     progress[cls] = class_counts.get(cls, 0)
 save_checkpoint(progress)
-print("\n✅ Checkpoint saved")
+print("\nOK Checkpoint saved")
 
 # %% [markdown]
 # ## Step 6B: Save Detection Images (Full Images + YOLO Labels)
@@ -280,31 +300,38 @@ print("\n✅ Checkpoint saved")
 
 # %%
 detection_dir = DATA_PROCESSED_DIR / "detection"
-det_stats     = {"train": {"images": 0, "objects": 0}, "val": {"images": 0, "objects": 0}}
-img_id        = 0
+det_stats = {"train": {"images": 0, "objects": 0}, "val": {"images": 0, "objects": 0}}
+img_id    = 0
 
-print("Saving detection images + YOLO labels...\n")
-
-for split_name, split_data in [("train", train_data), ("val", val_data)]:
-    print(f"  Processing {split_name.upper()} split...")
-    for class_name in tqdm(CLASSES, desc=f"    {split_name}", leave=False):
-        for item in split_data.get(class_name, []):
-            img         = item["image"]
-            annotations = item["annotations"]
-
-            # Count valid objects in this image
-            valid_cats = [c for c in annotations["category"] if c in HF_CATEGORY_TO_CLASS_IDX]
-            if not valid_cats:
-                continue
-
-            save_detection_sample(img, annotations, img_id, split_name, detection_dir)
-            det_stats[split_name]["images"]  += 1
-            det_stats[split_name]["objects"] += len(valid_cats)
-            img_id += 1
+if not HAS_NEW_IMAGES:
+    # Read counts from disk
+    for split in ["train", "val"]:
+        img_dir = detection_dir / "images" / split
+        lbl_dir = detection_dir / "labels" / split
+        det_stats[split]["images"] = len(list(img_dir.glob("*.jpg"))) if img_dir.exists() else 0
+        det_stats[split]["objects"] = sum(
+            len(f.read_text().strip().splitlines())
+            for f in lbl_dir.glob("*.txt") if f.exists()
+        ) if lbl_dir.exists() else 0
+    print("Resume: detection images already on disk.")
+else:
+    print("Saving detection images + YOLO labels...\n")
+    for split_name, split_data in [("train", train_data), ("val", val_data)]:
+        print(f"  Processing {split_name.upper()} split...")
+        for class_name in tqdm(CLASSES, desc=f"    {split_name}", leave=False):
+            for item in split_data.get(class_name, []):
+                img         = item["image"]
+                annotations = item["annotations"]
+                valid_cats  = [c for c in annotations["category"] if c in HF_CATEGORY_TO_CLASS_IDX]
+                if not valid_cats:
+                    continue
+                save_detection_sample(img, annotations, img_id, split_name, detection_dir)
+                det_stats[split_name]["images"]  += 1
+                det_stats[split_name]["objects"] += len(valid_cats)
+                img_id += 1
 
 total_det_images  = sum(s["images"]  for s in det_stats.values())
 total_det_objects = sum(s["objects"] for s in det_stats.values())
-
 print()
 print("=== Detection Dataset ===")
 print(f"  Train: {det_stats['train']['images']} images, {det_stats['train']['objects']} objects")
@@ -338,7 +365,7 @@ with open(yaml_path) as f:
     loaded = yaml.safe_load(f)
 assert loaded["nc"] == NUM_CLASSES, f"nc mismatch: {loaded['nc']} vs {NUM_CLASSES}"
 assert len(loaded["names"]) == NUM_CLASSES
-print(f"✅ data.yaml created → {yaml_path}")
+print(f"OK data.yaml created -> {yaml_path}")
 print(f"   path: {loaded['path']}")
 print(f"   nc:   {loaded['nc']}")
 print(f"   names: {list(loaded['names'].values())[:5]}...")
@@ -374,7 +401,7 @@ metadata = {
 ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 save_json(metadata, DATA_PROCESSED_DIR / "metadata.json")
-print(f"✅ Metadata saved → {DATA_PROCESSED_DIR / 'metadata.json'}")
+print(f"OK Metadata saved -> {DATA_PROCESSED_DIR / 'metadata.json'}")
 
 # %% [markdown]
 # ## Summary
@@ -383,7 +410,7 @@ print(f"✅ Metadata saved → {DATA_PROCESSED_DIR / 'metadata.json'}")
 print("\n" + "="*65)
 print("SECTION 2 COMPLETE — Dataset Acquisition")
 print("="*65)
-print(f"  Classification images : {total_cls_images} ({target}/class × 25 classes)")
+print(f"  Classification images : {total_cls_images} ({target}/class x 25 classes)")
 print(f"  Detection images      : {total_det_images} (train={det_stats['train']['images']} val={det_stats['val']['images']})")
 print(f"  FAST_MODE             : {FAST_MODE}")
 print(f"  Checkpoint file       : {CHECKPOINT_FILE}")

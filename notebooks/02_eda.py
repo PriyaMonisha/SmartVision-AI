@@ -19,13 +19,17 @@
 
 # %%
 import sys, os
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     from google.colab import drive
     drive.mount('/content/drive')
-    PROJECT_ROOT = '/content/drive/MyDrive/SmartVisionAI'
-    sys.path.insert(0, PROJECT_ROOT)
-    os.chdir(PROJECT_ROOT)
+    COLAB_ROOT = '/content/drive/MyDrive/SmartVisionAI'
+    sys.path.insert(0, COLAB_ROOT)
+    os.chdir(COLAB_ROOT)
     print("Running in Colab")
 except ImportError:
     print("Running locally")
@@ -132,7 +136,7 @@ chi2, p   = chisquare(observed, expected)
 balanced  = p > 0.05
 print(f"\nChi-squared balance test:")
 print(f"  chi2 = {chi2:.4f}  |  p = {p:.4f}")
-print(f"  {'✅ BALANCED (p>0.05)' if balanced else '⚠️  IMBALANCED (p<=0.05)'}")
+print(f"  {'OK BALANCED (p>0.05)' if balanced else 'WARNING  IMBALANCED (p<=0.05)'}")
 
 # %% [markdown]
 # ## 3. Sample Image Grid (5×5 — one per class)
@@ -446,7 +450,7 @@ print("\n" + "="*60)
 print("SECTION 3 COMPLETE — EDA")
 print("="*60)
 print(f"  Total images        : {total_images}")
-print(f"  Class balance       : {'✅ Balanced' if balanced else '⚠️  Imbalanced'} (chi2={chi2:.2f}, p={p:.4f})")
+print(f"  Class balance       : {'OK Balanced' if balanced else 'WARNING  Imbalanced'} (chi2={chi2:.2f}, p={p:.4f})")
 print(f"  Hard classes        : {hard_classes}")
 print(f"  Figures saved to    : {FIGURES_DIR}")
 print(f"  Artifacts saved to  : {ARTIFACTS_DIR / 'eda'}")
