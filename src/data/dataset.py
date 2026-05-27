@@ -1,13 +1,17 @@
 # filename: src/data/dataset.py
-# purpose:  PyTorch Dataset for SmartVision 25-class classification
+# purpose:  PyTorch Dataset for SmartVision classification (NUM_CLASSES from config)
 # version:  2.0
 
 import logging
+import platform
 from pathlib import Path
 from typing import Optional
 
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
+
+# Windows requires num_workers=0 (no fork); Linux/Colab can use 2 workers
+_NUM_WORKERS = 0 if platform.system() == "Windows" else 2
 
 from config import (
     CLASS_TO_IDX,
@@ -93,15 +97,15 @@ def get_dataloaders(
 
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True,
-        num_workers=2, pin_memory=True, drop_last=True,
+        num_workers=_NUM_WORKERS, pin_memory=True, drop_last=True,
     )
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False,
-        num_workers=2, pin_memory=True,
+        num_workers=_NUM_WORKERS, pin_memory=True,
     )
     test_loader = DataLoader(
         test_ds, batch_size=batch_size, shuffle=False,
-        num_workers=2, pin_memory=True,
+        num_workers=_NUM_WORKERS, pin_memory=True,
     )
 
     logger.info(

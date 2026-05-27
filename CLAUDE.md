@@ -35,21 +35,40 @@ At the end of EVERY section, before declaring it complete:
 - [ ] `git status` — confirm working tree clean
 - [ ] CLAUDE.md progress table updated (move section Remaining → Completed)
 - [ ] `cross_project_ml.md` updated with SmartVision lesson for this section
+- [ ] `INTERVIEW_PREP_SMARTVISION.md` updated with interview-relevant Q&As from this section
 - [ ] Next section dependencies confirmed
 
 ---
 
 ## Current Status
-**Active Section:** Section 1 ✅ (just completed)
-**Last Working File:** config.py, requirements*.txt, .gitignore, CLAUDE.md
-**Last Decision Made:** PyTorch, Colab training, full production stack, 38 rules locked
+**Active Section:** Section 5 🔄 (CNN Training — data re-acquisition in progress)
+**Last Working File:** config.py, src/data/augmentor.py, notebooks/04_train_classifier.py
+**Last Decision Made:** Root cause confirmed — 69 img/class is insufficient. All 4 model runs
+documented. IMAGES_PER_CLASS changed 100→200. EfficientNet lr bug fixed 0.0001→0.001.
+Retrain order after re-acquisition: mobilenet → efficientnet → resnet50 → (skip vgg16).
+
+**Section 5 Training Status — Round 1 (69 img/class, DOCUMENTED):**
+- VGG16:         59.5% val — overfitting Phase 2 (4,100 params/img)
+- ResNet50:      70.4% val (layer3+4) / 66.7% val (layer4-only) — overfitting
+- MobileNetV2:   54.9% val — RandomErasing bug destroyed signal at 69/class
+- EfficientNetB0: 51.7% val — lr=0.0001 bug (10× too slow, never converged in 25 epochs)
+
+**Root Cause:** 69 images/class (100 total × 70% split) = ceiling ~59-60% for frozen features.
+
+**Section 5 Round 2 Plan (200 img/class = 140 train/class):**
+1. Re-run 01_data_acquisition.py (CPU, ~20-30 min) — checkpoint auto-collects 100 more/class
+2. Retrain MobileNetV2 first (lr=0.001, batch=32, epochs=25) — expect 76-83%
+3. Retrain EfficientNetB0 (lr=0.001 fixed, batch=32, epochs=25) — expect 79-86%
+4. Retrain ResNet50 (2-phase, layer4.2-only) — expect 76-81%
+5. Skip VGG16 retrain unless time permits
 
 ---
 
 ## ⚠️ MANDATORY AFTER EVERY SECTION (no exceptions)
-When you see a POST-COMMIT REMINDER, do BOTH immediately:
+When you see a POST-COMMIT REMINDER, do ALL THREE immediately:
 1. **Update CLAUDE.md** — move section Remaining → Completed, update Active Section
 2. **Update cross_project_ml.md** — add SmartVision lesson block
+3. **Update INTERVIEW_PREP_SMARTVISION.md** — add interview-relevant Q&As from this section only (skip if no new interview-worthy decisions were made)
 
 ---
 
@@ -58,15 +77,18 @@ When you see a POST-COMMIT REMINDER, do BOTH immediately:
 ### Completed ✅
 - [x] Section 0: .claude/ setup (settings.json, rule files)
 - [x] Section 1: config.py, requirements*.txt, .gitignore, pyrightconfig.json, __init__.py, CLAUDE.md
+- [x] Section 2: Dataset Acquisition (HuggingFace streaming + checkpoint/resume) — 2,500 images, 25 classes, data in data/processed/
+- [x] Section 3: EDA (class distribution, image quality, chi-squared balance test, 7 figures)
+- [x] Section 4: Preprocessing + Augmentation + YOLO Annotation Validation
 
 ### In Progress 🔄
-(none)
+- [ ] Section 5: CNN Training (Colab T4)
+  - [x] VGG16: 59.5% — accepted (architecture limitation, overfitting Phase 2)
+  - [ ] ResNet50: layer4.2-only Phase 2 fix applied (fc unfreeze bug fixed), retrain PENDING
+  - [ ] MobileNetV2: not started
+  - [ ] EfficientNetB0: not started
 
 ### Remaining 📋
-- [ ] Section 2: Dataset Acquisition (HuggingFace streaming + checkpoint/resume)
-- [ ] Section 3: EDA (class distribution, image quality, chi-squared balance test)
-- [ ] Section 4: Preprocessing + Augmentation + YOLO Annotation Validation
-- [ ] Section 5: CNN Training Framework (VGG16 → ResNet50 → MobileNetV2 → EfficientNetB0)
 - [ ] Section 6: YOLOv8 Detection
 - [ ] Section 7: Model Comparison + MLflow + Drift Baseline
 - [ ] Section 8: FastAPI + Redis
@@ -158,6 +180,7 @@ Docker Compose | pytest | GitHub Actions CI
 | 38 | @st.cache_data for artifact loading; @st.cache_resource for models |
 | 39 | torch.load(..., weights_only=True) everywhere — security + FutureWarning |
 | 40 | __file__ undefined in Jupyter/Colab — wrap PROJECT_ROOT in try/except NameError |
+| 41 | Create INTERVIEW_PREP_SMARTVISION.md at Section 0/1; update after every section with interview-relevant Q&As only |
 
 ---
 
