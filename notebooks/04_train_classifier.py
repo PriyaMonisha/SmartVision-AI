@@ -176,7 +176,7 @@ lr         = cfg["lr"]
 
 _train_ds, _val_ds, _test_ds = train_loader.dataset, val_loader.dataset, test_loader.dataset
 assert _train_ds is not None and _val_ds is not None and _test_ds is not None
-print(f"Train: {len(_train_ds)} | Val: {len(_val_ds)} | Test: {len(_test_ds)}")
+print(f"Train: {len(_train_ds)} | Val: {len(_val_ds)} | Test: {len(_test_ds)}")  # type: ignore[arg-type]
 print(f"Batch: {batch_size} | LR: {lr} | Epochs: {epochs}")
 
 # %%

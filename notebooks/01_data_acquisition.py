@@ -31,9 +31,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # Optional Colab setup — ignored when running locally in terminal
 try:
-    from google.colab import drive
+    from google.colab import drive  # type: ignore[import-untyped]
     drive.mount('/content/drive')
-    COLAB_ROOT = '/content/drive/MyDrive/SmartVisionAI'  # adjust if needed
+    COLAB_ROOT = '/content/drive/MyDrive/Smart Vision AI'
     sys.path.insert(0, COLAB_ROOT)
     os.chdir(COLAB_ROOT)
     print("Running in Colab")
@@ -46,13 +46,12 @@ except Exception:  # ImportError=not in Colab; MessageError=Drive auth failed (r
 # %%
 # ================================================================
 # FAST_MODE — LOCAL variable, passed as argument to functions
-# True  -> 10 images/class (250 total, ~2 min)
-# False -> 100 images/class (2500 total, ~15-20 min)
+# True  -> FAST_IMAGES_PER_CLASS (10) images/class
+# False -> IMAGES_PER_CLASS (200) images/class
 # ================================================================
-FAST_MODE = False   # Full run: 100 images/class = 2500 total
+FAST_MODE = False   # Full run: 200 images/class = 4400 total (22 classes)
 # ================================================================
 print(f"FAST_MODE = {FAST_MODE}")
-print(f"Target: {'10' if FAST_MODE else '100'} images/class x 25 classes = {'250' if FAST_MODE else '2500'} total")
 
 # %% [markdown]
 # ## Step 1: Imports and Config
@@ -77,7 +76,8 @@ from config import (
 )
 from src.data.loader import (
     verify_coco_mapping, load_checkpoint, save_checkpoint,
-    save_classification_crop, save_detection_sample, get_split, bbox_to_yolo,
+    check_crop_quality, save_classification_crop, save_detection_sample,
+    get_split, bbox_to_yolo,
 )
 from src.utils.helpers import save_json, load_json, create_hub_repo
 
@@ -129,7 +129,7 @@ completed_classes = {cls for cls, cnt in progress.items() if cnt >= target}
 remaining_classes = [cls for cls in CLASSES if cls not in completed_classes]
 
 print(f"Target per class : {target}")
-print(f"Already complete : {len(completed_classes)}/25 classes")
+print(f"Already complete : {len(completed_classes)}/{NUM_CLASSES} classes")
 print(f"Still needed     : {len(remaining_classes)} classes")
 
 # In-memory storage: {class_name: [{'image': PIL, 'annotations': dict, 'idx': int}]}
@@ -154,7 +154,8 @@ if remaining_classes:
 
     total_collected = sum(progress.values())
     images_processed = 0
-    MAX_ITER = 60000  # safety limit
+    MAX_ITER = 80000  # increased from 60k — quality filter means more streams needed
+    rejection_stats = {"too_small": 0, "too_tiny": 0, "bad_aspect": 0, "accepted": 0}
 
     for idx, item in enumerate(dataset):
         if images_processed >= MAX_ITER:
@@ -172,6 +173,9 @@ if remaining_classes:
         categories = item["objects"]["category"]
 
         # Check if any target class is in this image (O(n) lookup via set)
+        bboxes   = item["objects"]["bbox"]
+        cat_list = item["objects"]["category"]
+
         for cat_id in set(categories):  # deduplicate cat_ids per image
             if cat_id not in HF_CATEGORY_TO_CLASS_IDX:
                 continue
@@ -181,6 +185,20 @@ if remaining_classes:
             if class_counts[class_name] >= target:
                 remaining_classes.remove(class_name)
                 continue
+
+            # Find the bbox for this cat_id and apply quality gates
+            target_bbox = next((b for b, c in zip(bboxes, cat_list) if c == cat_id), None)
+            if target_bbox is None:
+                continue
+            img = item["image"]
+            x, y, w, h = target_bbox
+            x1 = max(0, int(x));  y1 = max(0, int(y))
+            x2 = min(img.width, int(x + w));  y2 = min(img.height, int(y + h))
+            quality = check_crop_quality(img, x1, y1, x2, y2)
+            if quality != "ok":
+                rejection_stats[quality] += 1
+                continue
+            rejection_stats["accepted"] += 1
 
             class_images[class_name].append({
                 "image":       item["image"],
@@ -193,9 +211,23 @@ if remaining_classes:
             if class_counts[class_name] >= target:
                 remaining_classes.remove(class_name)
                 print(f"   OK {class_name}: {class_counts[class_name]} images "
-                      f"({NUM_CLASSES - len(remaining_classes)}/25 done)")
+                      f"({NUM_CLASSES - len(remaining_classes)}/{NUM_CLASSES} done)")
 
     print(f"\n Stream complete: processed {images_processed} images")
+
+    total_checked = sum(rejection_stats.values())
+    if total_checked > 0:
+        print("\n=== Crop Quality Report ===")
+        print(f"  Accepted:          {rejection_stats['accepted']:5d}  ({100*rejection_stats['accepted']/total_checked:.1f}%)")
+        print(f"  Rejected (small):  {rejection_stats['too_small']:5d}  ({100*rejection_stats['too_small']/total_checked:.1f}%)  <48px")
+        print(f"  Rejected (tiny):   {rejection_stats['too_tiny']:5d}  ({100*rejection_stats['too_tiny']/total_checked:.1f}%)  <1% image area")
+        print(f"  Rejected (aspect): {rejection_stats['bad_aspect']:5d}  ({100*rejection_stats['bad_aspect']/total_checked:.1f}%)  >5:1 ratio")
+        print(f"  Total checked:     {total_checked:5d}")
+        accept_pct = 100 * rejection_stats["accepted"] / total_checked
+        if accept_pct < 50:
+            print("  WARNING: <50% accepted — consider relaxing thresholds")
+        elif accept_pct > 90:
+            print("  NOTE: >90% accepted — filter had minimal impact; noise may be in content, not size")
 
 else:
     print("OK All classes already collected per checkpoint. Reload images from disk if needed.")
@@ -276,11 +308,11 @@ if HAS_NEW_IMAGES:
                 for bbox, cat_id in zip(bboxes, categories):
                     if cat_id == class_id:
                         global_idx = progress.get(class_name, 0) + img_idx
-                        saved = save_classification_crop(
+                        result = save_classification_crop(
                             img, bbox, class_name, split_name,
                             global_idx, classification_dir,
                         )
-                        if saved:
+                        if result is True:
                             classification_stats[split_name] += 1
                         break
 
@@ -390,7 +422,7 @@ for split in ["train", "val", "test"]:
 total_cls_images = sum(sum(v.values()) for v in split_counts.values())
 
 metadata = {
-    "dataset":              "COCO 2017 (25-class subset)",
+    "dataset":              f"COCO 2017 ({NUM_CLASSES}-class subset)",
     "total_images":         total_cls_images,
     "images_per_class":     target,
     "fast_mode":            FAST_MODE,
@@ -415,7 +447,7 @@ print(f"OK Metadata saved -> {DATA_PROCESSED_DIR / 'metadata.json'}")
 print("\n" + "="*65)
 print("SECTION 2 COMPLETE — Dataset Acquisition")
 print("="*65)
-print(f"  Classification images : {total_cls_images} ({target}/class x 25 classes)")
+print(f"  Classification images : {total_cls_images} ({target}/class x {NUM_CLASSES} classes)")
 print(f"  Detection images      : {total_det_images} (train={det_stats['train']['images']} val={det_stats['val']['images']})")
 print(f"  FAST_MODE             : {FAST_MODE}")
 print(f"  Checkpoint file       : {CHECKPOINT_FILE}")
