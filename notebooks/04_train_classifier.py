@@ -127,32 +127,32 @@ print(f"Device: {device} ({'GPU' if device.type == 'cuda' else 'CPU — training
 # BOTH must be checked — source can be correct while old .pyc still runs
 import importlib, inspect
 import torchvision
-import src.data.augmentor as _aug_mod
-importlib.reload(_aug_mod)
-from src.data.augmentor import get_train_transforms as _gtf
+import src.data.augmentor as aug_mod
+importlib.reload(aug_mod)
+from src.data.augmentor import get_train_transforms as gtf
 
-_src = inspect.getsource(_gtf)
-assert "RandomErasing" not in _src, "SOURCE has RandomErasing — fix augmentor.py"
+aug_source = inspect.getsource(gtf)
+assert "RandomErasing" not in aug_source, "SOURCE has RandomErasing — fix augmentor.py"
 
-_pipeline = _gtf(IMAGE_SIZE)
-assert _pipeline is not None, "Torch not available — cannot verify augmentor pipeline"
-_names    = [type(t).__name__ for t in _pipeline.transforms]
-assert "RandomErasing" not in _names, (
-    f"RUNTIME has RandomErasing: {_names}\n"
+aug_pipeline = gtf(IMAGE_SIZE)
+assert aug_pipeline is not None, "Torch not available — cannot verify augmentor pipeline"
+transform_names = [type(t).__name__ for t in aug_pipeline.transforms]
+assert "RandomErasing" not in transform_names, (
+    f"RUNTIME has RandomErasing: {transform_names}\n"
     "Stale .pyc — Runtime > Restart Runtime, then re-run"
 )
-assert "RandomZoomOut" in _names, f"ZoomOut missing from runtime: {_names}"
+assert "RandomZoomOut" in transform_names, f"ZoomOut missing from runtime: {transform_names}"
 
 # Verify ZoomOut comes AFTER ToDtype (ordering is load-bearing for fill value)
-_idx = {name: i for i, name in enumerate(_names)}
-assert _idx.get("ToImage", -1) < _idx.get("RandomZoomOut", 999), \
+transform_order = {name: i for i, name in enumerate(transform_names)}
+assert transform_order.get("ToImage", -1) < transform_order.get("RandomZoomOut", 999), \
     "ToImage must precede RandomZoomOut"
-assert _idx.get("ToDtype", -1) < _idx.get("RandomZoomOut", 999), \
+assert transform_order.get("ToDtype", -1) < transform_order.get("RandomZoomOut", 999), \
     "ToDtype must precede RandomZoomOut"
-assert _idx.get("RandomZoomOut", -1) < _idx.get("Normalize", 999), \
+assert transform_order.get("RandomZoomOut", -1) < transform_order.get("Normalize", 999), \
     "RandomZoomOut must precede Normalize"
 
-print(f"Augmentor runtime OK: {_names}")
+print(f"Augmentor runtime OK: {transform_names}")
 print(f"torchvision: {torchvision.__version__}")
 
 # %% [markdown]
@@ -183,7 +183,7 @@ print(f"Batch: {batch_size} | LR: {lr} | Epochs: {epochs}")
 # Class balance check — fast path, no image loading
 from collections import Counter
 
-def _fast_label_counts(ds) -> Counter:
+def fast_label_counts(ds) -> Counter:
     """Get label counts without loading images (O(N) over metadata only)."""
     if hasattr(ds, "samples"):
         return Counter(lbl for _, lbl in ds.samples)    # SmartVisionDataset
@@ -192,11 +192,11 @@ def _fast_label_counts(ds) -> Counter:
     else:
         raise AttributeError("Dataset has neither .samples nor .targets")
 
-_counts = _fast_label_counts(train_loader.dataset)
-_min, _max = min(_counts.values()), max(_counts.values())
-_ratio = _max / _min
-print(f"Class balance — min: {_min}, max: {_max}, ratio: {_ratio:.2f}x")
-assert _ratio < 1.5, f"Imbalanced split: ratio={_ratio:.2f} — check data collection"
+label_counts = fast_label_counts(train_loader.dataset)
+count_min, count_max = min(label_counts.values()), max(label_counts.values())
+balance_ratio = count_max / count_min
+print(f"Class balance — min: {count_min}, max: {count_max}, ratio: {balance_ratio:.2f}x")
+assert balance_ratio < 1.5, f"Imbalanced split: ratio={balance_ratio:.2f} — check data collection"
 print("Class balance OK")
 
 # %% [markdown]
@@ -307,10 +307,10 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
         print(f"ResNet50 Phase 2: fine-tune layer4.2+fc ({phase2_epochs} epochs, lr={lr})")
         print(f"Phase 2 trainable: {count_trainable_params(model):,}")
         optimizer2 = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-4)
-        _warmup_epochs = min(2, max(1, phase2_epochs - 1))
-        _warmup  = LinearLR(optimizer2, start_factor=0.1, end_factor=1.0, total_iters=_warmup_epochs)
-        _cosine  = CosineAnnealingLR(optimizer2, T_max=max(phase2_epochs - _warmup_epochs, 1), eta_min=1e-7)
-        scheduler2 = SequentialLR(optimizer2, schedulers=[_warmup, _cosine], milestones=[_warmup_epochs])
+        warmup_epochs = min(2, max(1, phase2_epochs - 1))
+        warmup_sched  = LinearLR(optimizer2, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs)
+        cosine_sched  = CosineAnnealingLR(optimizer2, T_max=max(phase2_epochs - warmup_epochs, 1), eta_min=1e-7)
+        scheduler2 = SequentialLR(optimizer2, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_epochs])
         history2 = train(
             model, train_loader, val_loader, optimizer2, scheduler2,
             criterion, device, epochs=phase2_epochs, patience=8,
@@ -347,10 +347,10 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
         print(f"MobileNetV2 Phase 2: fine-tune features[14:] ({phase2_epochs} epochs, lr={lr / 10})")
         print(f"Phase 2 trainable: {count_trainable_params(model):,}")
         optimizer2 = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr / 10, weight_decay=1e-4)
-        _warmup_epochs = min(2, max(1, phase2_epochs - 1))
-        _warmup  = LinearLR(optimizer2, start_factor=0.1, end_factor=1.0, total_iters=_warmup_epochs)
-        _cosine  = CosineAnnealingLR(optimizer2, T_max=max(phase2_epochs - _warmup_epochs, 1), eta_min=1e-7)
-        scheduler2 = SequentialLR(optimizer2, schedulers=[_warmup, _cosine], milestones=[_warmup_epochs])
+        warmup_epochs = min(2, max(1, phase2_epochs - 1))
+        warmup_sched  = LinearLR(optimizer2, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs)
+        cosine_sched  = CosineAnnealingLR(optimizer2, T_max=max(phase2_epochs - warmup_epochs, 1), eta_min=1e-7)
+        scheduler2 = SequentialLR(optimizer2, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_epochs])
         history2 = train(
             model, train_loader, val_loader, optimizer2, scheduler2,
             criterion, device, epochs=phase2_epochs, patience=8,
@@ -515,15 +515,15 @@ ACCURACY_FLOOR  = 0.65   # below this = pipeline broken
 ACCURACY_WARN   = 0.72   # below this = below expected COCO-crop range
 ACCURACY_TARGET = 0.80   # original target
 
-_acc = test_metrics["accuracy"]
-if _acc < ACCURACY_FLOOR:
-    print(f"  CRITICAL: {_acc:.1%} below floor ({ACCURACY_FLOOR:.0%}) — check data pipeline")
-elif _acc < ACCURACY_WARN:
-    print(f"  WARNING:  {_acc:.1%} below expected COCO-crop range ({ACCURACY_WARN:.0%}+)")
-elif _acc < ACCURACY_TARGET:
-    print(f"  NOTE:     {_acc:.1%} — within realistic range for COCO crops at 140/class")
+test_acc = test_metrics["accuracy"]
+if test_acc < ACCURACY_FLOOR:
+    print(f"  CRITICAL: {test_acc:.1%} below floor ({ACCURACY_FLOOR:.0%}) — check data pipeline")
+elif test_acc < ACCURACY_WARN:
+    print(f"  WARNING:  {test_acc:.1%} below expected COCO-crop range ({ACCURACY_WARN:.0%}+)")
+elif test_acc < ACCURACY_TARGET:
+    print(f"  NOTE:     {test_acc:.1%} — within realistic range for COCO crops at 140/class")
 else:
-    print(f"  PASS:     {_acc:.1%} >= {ACCURACY_TARGET:.0%}")
+    print(f"  PASS:     {test_acc:.1%} >= {ACCURACY_TARGET:.0%}")
 
 # 4. Upload to HuggingFace Hub
 print(f"\nUploading {MODEL}_best.pt to HF Hub...")
