@@ -173,6 +173,7 @@ epochs     = 3 if FAST_MODE else cfg["epochs"]
 batch_size = cfg["batch"]
 lr         = cfg["lr"]
 
+assert train_loader.dataset is not None and val_loader.dataset is not None and test_loader.dataset is not None
 print(f"Train: {len(train_loader.dataset)} | Val: {len(val_loader.dataset)} | Test: {len(test_loader.dataset)}")
 print(f"Batch: {batch_size} | LR: {lr} | Epochs: {epochs}")
 
@@ -218,6 +219,12 @@ save_path = MODELS_DIR / f"{MODEL}_best.pt"
 # Fail fast — create artifact dirs before training (not after hours of compute)
 SAVE_DIR = ARTIFACTS_DIR / f"classification/{MODEL}"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Default history — overwritten by whichever model branch runs below
+history: dict = {
+    "train_loss": [], "train_acc": [], "val_loss": [],
+    "val_acc": [], "val_f1": [], "best_val_acc": 0.0,
+}
 
 # MLflow
 mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
