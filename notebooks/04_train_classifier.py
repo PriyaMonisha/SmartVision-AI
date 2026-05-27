@@ -32,7 +32,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 IN_COLAB = False
 try:
-    from google.colab import drive
+    from google.colab import drive  # type: ignore[import-untyped]
     drive.mount('/content/drive')
     COLAB_ROOT = '/content/drive/MyDrive/Smart Vision AI'
     sys.path.insert(0, COLAB_ROOT)
@@ -135,6 +135,7 @@ _src = inspect.getsource(_gtf)
 assert "RandomErasing" not in _src, "SOURCE has RandomErasing — fix augmentor.py"
 
 _pipeline = _gtf(IMAGE_SIZE)
+assert _pipeline is not None, "Torch not available — cannot verify augmentor pipeline"
 _names    = [type(t).__name__ for t in _pipeline.transforms]
 assert "RandomErasing" not in _names, (
     f"RUNTIME has RandomErasing: {_names}\n"
@@ -173,8 +174,9 @@ epochs     = 3 if FAST_MODE else cfg["epochs"]
 batch_size = cfg["batch"]
 lr         = cfg["lr"]
 
-assert train_loader.dataset is not None and val_loader.dataset is not None and test_loader.dataset is not None
-print(f"Train: {len(train_loader.dataset)} | Val: {len(val_loader.dataset)} | Test: {len(test_loader.dataset)}")
+_train_ds, _val_ds, _test_ds = train_loader.dataset, val_loader.dataset, test_loader.dataset
+assert _train_ds is not None and _val_ds is not None and _test_ds is not None
+print(f"Train: {len(_train_ds)} | Val: {len(_val_ds)} | Test: {len(_test_ds)}")
 print(f"Batch: {batch_size} | LR: {lr} | Epochs: {epochs}")
 
 # %%
