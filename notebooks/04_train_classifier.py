@@ -174,9 +174,9 @@ epochs     = 3 if FAST_MODE else cfg["epochs"]
 batch_size = cfg["batch"]
 lr         = cfg["lr"]
 
-_train_ds, _val_ds, _test_ds = train_loader.dataset, val_loader.dataset, test_loader.dataset
-assert _train_ds is not None and _val_ds is not None and _test_ds is not None
-print(f"Train: {len(_train_ds)} | Val: {len(_val_ds)} | Test: {len(_test_ds)}")  # type: ignore[arg-type]
+train_ds, val_ds, test_ds = train_loader.dataset, val_loader.dataset, test_loader.dataset
+assert train_ds is not None and val_ds is not None and test_ds is not None
+print(f"Train: {len(train_ds)} | Val: {len(val_ds)} | Test: {len(test_ds)}")  # type: ignore[arg-type]
 print(f"Batch: {batch_size} | LR: {lr} | Epochs: {epochs}")
 
 # %%
