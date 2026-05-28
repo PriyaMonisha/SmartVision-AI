@@ -78,7 +78,7 @@ matplotlib.use("Agg")  # non-interactive backend for Colab/server
 
 import torch
 import torch.nn as nn
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR, LinearLR, SequentialLR
 
 import mlflow
@@ -96,11 +96,13 @@ from src.data.augmentor   import get_train_transforms, get_eval_transforms, deno
 from src.data.dataset     import SmartVisionDataset, get_dataloaders
 from src.models.model_factory import (
     get_model,
-    freeze_vgg16_phase1, unfreeze_vgg16_phase2,
-    freeze_resnet50_phase1, unfreeze_resnet50_phase2,
     unfreeze_mobilenet_phase2,
-    count_trainable_params,
+    unfreeze_resnet50_phase2,
     get_per_class_accuracy,
+    # REMOVED: freeze_resnet50_phase1  (done inside get_model)
+    # REMOVED: freeze_vgg16_phase1     (done inside get_model)
+    # REMOVED: unfreeze_vgg16_phase2   (VGG16 not training)
+    # REMOVED: count_trainable_params  (use inline sum())
 )
 from src.models.base_classifier import (
     train, evaluate, benchmark_inference, save_model, load_model,
@@ -204,7 +206,7 @@ print("Class balance OK")
 
 # %%
 model = get_model(MODEL, num_classes=NUM_CLASSES).to(device)
-trainable = count_trainable_params(model)
+trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
 total     = sum(p.numel() for p in model.parameters())
 print(f"Trainable params: {trainable:,} / {total:,} ({100*trainable/total:.1f}%)")
 
@@ -252,9 +254,13 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
         mlflow.log_params({"phase1_epochs": phase1_epochs, "phase2_epochs": phase2_epochs})
 
         # Phase 1: head only
-        freeze_vgg16_phase1(model)
+        # freeze_vgg16_phase1 removed -- get_model("vgg16") freezes features at build time
+        # VGG16 classifier[6] (the head) is unfrozen by default (new nn.Linear layer)
+        for name_p, param in model.named_parameters():
+            if "classifier.6" not in name_p:
+                param.requires_grad = False
         print(f"VGG16 Phase 1: head only ({phase1_epochs} epochs, lr={lr})")
-        print(f"Phase 1 trainable: {count_trainable_params(model):,}")
+        print(f"Phase 1 trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
         optimizer1 = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-4)
         scheduler1 = StepLR(optimizer1, step_size=3, gamma=0.1)
         history1 = train(
@@ -265,9 +271,12 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
         )
 
         # Phase 2: unfreeze features[24:] and fine-tune
-        unfreeze_vgg16_phase2(model)
+        for i, layer in enumerate(model.features):
+            if i >= 24:
+                for param in layer.parameters():
+                    param.requires_grad = True
         print(f"VGG16 Phase 2: fine-tune features[24:] ({phase2_epochs} epochs, lr={lr/10})")
-        print(f"Phase 2 trainable: {count_trainable_params(model):,}")
+        print(f"Phase 2 trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
         optimizer2 = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr / 10, weight_decay=1e-4)
         scheduler2 = CosineAnnealingLR(optimizer2, T_max=phase2_epochs)
         history2 = train(
@@ -290,9 +299,9 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
         mlflow.log_params({"phase1_epochs": phase1_epochs, "phase2_epochs": phase2_epochs})
 
         # Phase 1: head only
-        freeze_resnet50_phase1(model)
+        # Backbone already frozen inside get_model("resnet50"). No separate freeze call needed.
         print(f"ResNet50 Phase 1: head only ({phase1_epochs} epochs)")
-        print(f"Phase 1 trainable: {count_trainable_params(model):,}")
+        print(f"Phase 1 trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
         optimizer1 = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr * 10, weight_decay=1e-4)
         scheduler1 = StepLR(optimizer1, step_size=3, gamma=0.1)
         history1 = train(
@@ -305,7 +314,7 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
         # Phase 2: unfreeze layer4.2 + fc, 2-epoch LR warmup before cosine
         unfreeze_resnet50_phase2(model)
         print(f"ResNet50 Phase 2: fine-tune layer4.2+fc ({phase2_epochs} epochs, lr={lr})")
-        print(f"Phase 2 trainable: {count_trainable_params(model):,}")
+        print(f"Phase 2 trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
         optimizer2 = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-4)
         warmup_epochs = min(2, max(1, phase2_epochs - 1))
         warmup_sched  = LinearLR(optimizer2, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs)
@@ -324,45 +333,165 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
         history["best_val_acc"] = max(history1.get("best_val_acc", 0),
                                       history2.get("best_val_acc", 0))
 
-    # ── MobileNetV2 ── 2-phase: head-only first, then fine-tune features[14:]
+    # ── MobileNetV2 ── 2-phase: head-only first, then fine-tune features[16:]
+    # Round 3 changes from Round 2:
+    #   AdamW replaces Adam (correct decoupled L2 for fine-tuning)
+    #   Phase 1: weight_decay 1e-4 -> 1e-3 (stronger head regularization)
+    #   Phase 2: differential param groups (backbone lr=1e-5 wd=1e-5, head lr=1e-4 wd=1e-3)
+    #   Phase 2: patience 8 -> 5; features[16:] via updated unfreeze_mobilenet_phase2()
+    #   Phase 2: dropout=0.4 via updated get_model() / _build_mobilenet_v2()
     elif MODEL == "mobilenet":
-        phase1_epochs = min(10, epochs)          # cap at total epochs (FAST_MODE guard)
-        phase2_epochs = max(0, epochs - phase1_epochs)  # 15 in full run
-        mlflow.log_params({"phase1_epochs": phase1_epochs, "phase2_epochs": phase2_epochs})
 
-        # Phase 1: head only (features frozen from get_model)
+        lr = 1e-3
+
+        # Epoch allocation with FAST_MODE guard
+        # FAST_MODE=True (epochs=3): phase1=3, phase2=0 -> Phase 2 skipped.
+        phase1_epochs = min(10, epochs)
+        phase2_epochs = max(0, epochs - phase1_epochs)
+
+        # Separate checkpoint paths: Phase 1 best preserved even if Phase 2 overfits.
+        save_path_p1 = MODELS_DIR / f"{MODEL}_phase1_best.pt"
+        save_path_p2 = MODELS_DIR / f"{MODEL}_best.pt"
+
+        # -- Phase 1: Head only --
+        # AdamW: decoupled weight decay. weight_decay=1e-3 (was 1e-4): stronger head regularization.
+        # patience=phase1_epochs: always complete Phase 1.
         print(f"MobileNetV2 Phase 1: head only ({phase1_epochs} epochs, lr={lr})")
-        print(f"Phase 1 trainable: {count_trainable_params(model):,}")
-        optimizer1 = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-4)
-        scheduler1 = CosineAnnealingLR(optimizer1, T_max=phase1_epochs)
-        history1 = train(
-            model, train_loader, val_loader, optimizer1, scheduler1,
-            criterion, device, epochs=phase1_epochs, patience=5,
-            scaler=None, model_name=f"{MODEL}_p1", save_path=save_path,
-            freeze_bn=True, grad_clip=1.0,
-        )
+        print(f"Phase 1 trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
-        # Phase 2: unfreeze features[14:], 2-epoch LR warmup before cosine
-        unfreeze_mobilenet_phase2(model)
-        print(f"MobileNetV2 Phase 2: fine-tune features[14:] ({phase2_epochs} epochs, lr={lr / 10})")
-        print(f"Phase 2 trainable: {count_trainable_params(model):,}")
-        optimizer2 = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr / 10, weight_decay=1e-4)
-        warmup_epochs = min(2, max(1, phase2_epochs - 1))
-        warmup_sched  = LinearLR(optimizer2, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs)
-        cosine_sched  = CosineAnnealingLR(optimizer2, T_max=max(phase2_epochs - warmup_epochs, 1), eta_min=1e-7)
-        scheduler2 = SequentialLR(optimizer2, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_epochs])
-        history2 = train(
-            model, train_loader, val_loader, optimizer2, scheduler2,
-            criterion, device, epochs=phase2_epochs, patience=8,
-            scaler=None, model_name=f"{MODEL}_p2", save_path=save_path,
-            freeze_bn=True, grad_clip=1.0,  # features[0:13] BN still frozen
+        optimizer1 = AdamW(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=lr, weight_decay=1e-3,
         )
+        scheduler1 = CosineAnnealingLR(optimizer1, T_max=phase1_epochs, eta_min=1e-6)
+
+        with mlflow.start_run(run_name=f"{MODEL}_phase1_r3", nested=True):
+            mlflow.log_params({
+                "model": MODEL, "phase": 1, "round": 3,
+                "optimizer": "AdamW", "lr": lr, "weight_decay": 1e-3,
+                "scheduler": f"CosineAnnealingLR(T_max={phase1_epochs},eta=1e-6)",
+                "phase1_epochs": phase1_epochs, "phase2_epochs": phase2_epochs,
+                "patience": phase1_epochs, "freeze_bn": True, "grad_clip": 1.0,
+                "dropout": 0.4, "label_smoothing": 0.1,
+                "trainable_scope": "classifier_head_only",
+            })
+            history1 = train(
+                model, train_loader, val_loader,
+                optimizer1, scheduler1, criterion, device,
+                epochs=phase1_epochs, patience=phase1_epochs,
+                scaler=None, model_name=f"{MODEL}_p1",
+                save_path=save_path_p1, freeze_bn=True, grad_clip=1.0,
+            )
+            _p1_train = history1["train_acc"][-1] if history1["train_acc"] else 0.0
+            _p1_val   = history1.get("best_val_acc", 0.0)
+            mlflow.log_metrics({
+                "p1_best_val_acc": _p1_val,
+                "p1_final_train":  _p1_train,
+                "p1_overfit_gap":  _p1_train - _p1_val,
+            })
+
+        print(f"  Phase 1: val={_p1_val:.4f} train={_p1_train:.4f} gap={_p1_train-_p1_val:.4f}pp")
+
+        # -- Phase 2: Fine-tune features[16:] --
+        # Skip entirely when phase2_epochs == 0 (FAST_MODE guard).
+        if phase2_epochs == 0:
+            print("  Phase 2 skipped (phase2_epochs=0).")
+            history2 = {
+                "train_loss": [], "train_acc": [], "val_loss": [],
+                "val_acc": [], "val_f1": [], "best_val_acc": _p1_val,
+            }
+        else:
+            print(f"\nMobileNetV2 Phase 2: fine-tune features[16:] ({phase2_epochs} epochs)")
+            unfreeze_mobilenet_phase2(model)
+
+            # Differential param groups:
+            # backbone lr=1e-5 (100x below Phase 1 LR): protect pretrained features
+            # backbone wd=1e-5: very light -- don't push pretrained weights to zero
+            # head lr=1e-4: continue Phase 1 adaptation rate
+            # head wd=1e-3: strong -- generalize the linear classifier
+            _backbone_params   = [p for n, p in model.named_parameters()
+                                  if p.requires_grad and "classifier" not in n]
+            _classifier_params = [p for n, p in model.named_parameters()
+                                  if p.requires_grad and "classifier" in n]
+            _n_back  = sum(p.numel() for p in _backbone_params)
+            _n_cls   = sum(p.numel() for p in _classifier_params)
+            _n_total = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+            assert _n_back > 0, (
+                f"backbone_params empty after unfreeze_mobilenet_phase2(). "
+                f"Total trainable: {_n_total:,}. Check unfreeze was called."
+            )
+            assert _n_cls > 0, "classifier_params empty. Check model.classifier attribute."
+            assert _n_back + _n_cls == _n_total, (
+                f"Param split incomplete: {_n_back:,}+{_n_cls:,} != {_n_total:,}"
+            )
+            print(f"Phase 2 trainable: {_n_total:,} "
+                  f"(backbone={_n_back:,} lr=1e-5 wd=1e-5, head={_n_cls:,} lr=1e-4 wd=1e-3 | "
+                  f"{_n_total/3080:.0f}/img)")
+
+            optimizer2 = AdamW([
+                {"params": _backbone_params,   "lr": 1e-5,    "weight_decay": 1e-5},
+                {"params": _classifier_params, "lr": lr / 10, "weight_decay": 1e-3},
+            ])
+
+            # max(1,...) ensures LinearLR(total_iters >= 1) -- avoids ZeroDivisionError
+            warmup_epochs = max(1, min(2, phase2_epochs - 1))
+            cosine_epochs = max(phase2_epochs - warmup_epochs, 1)
+            _warmup_sched = LinearLR(optimizer2, start_factor=0.1, end_factor=1.0,
+                                     total_iters=warmup_epochs)
+            _cosine_sched = CosineAnnealingLR(optimizer2, T_max=cosine_epochs, eta_min=1e-7)
+            scheduler2    = SequentialLR(optimizer2,
+                                         schedulers=[_warmup_sched, _cosine_sched],
+                                         milestones=[warmup_epochs])
+
+            with mlflow.start_run(run_name=f"{MODEL}_phase2_r3", nested=True):
+                mlflow.log_params({
+                    "model": MODEL, "phase": 2, "round": 3,
+                    "optimizer": "AdamW_differential",
+                    "lr_backbone": 1e-5, "lr_head": lr / 10,
+                    "wd_backbone": 1e-5, "wd_head": 1e-3,
+                    "scheduler": f"LinearWarmup({warmup_epochs}ep)+CosineAnnealing",
+                    "epochs": phase2_epochs, "patience": 5,
+                    "freeze_bn": True, "grad_clip": 1.0,
+                    "dropout": 0.4, "label_smoothing": 0.1,
+                    "trainable_scope": "features[16:]+classifier",
+                    "unfrozen_params": _n_total,
+                    "params_per_img": round(_n_total / 3080),
+                    "warmup_epochs": warmup_epochs, "cosine_epochs": cosine_epochs,
+                })
+                history2 = train(
+                    model, train_loader, val_loader,
+                    optimizer2, scheduler2, criterion, device,
+                    epochs=phase2_epochs, patience=5,   # was 8
+                    scaler=None, model_name=f"{MODEL}_p2",
+                    save_path=save_path_p2, freeze_bn=True, grad_clip=1.0,
+                )
+                _p2_train = history2["train_acc"][-1] if history2["train_acc"] else _p1_train
+                _p2_val   = history2.get("best_val_acc", _p1_val)
+                _p2_gap   = _p2_train - _p2_val
+                mlflow.log_metrics({
+                    "p2_best_val_acc": _p2_val,
+                    "p2_final_train":  _p2_train,
+                    "p2_overfit_gap":  _p2_gap,
+                })
+
+            print(f"  Phase 2: val={_p2_val:.4f} train={_p2_train:.4f} gap={_p2_gap:.4f}pp")
+            if _p2_gap > 0.20:
+                print(f"  WARNING gap>{0.20:.2f}: consider features[17:] for later models")
+            elif _p2_gap > 0.12:
+                print(f"  NOTE gap 0.12-0.20 (acceptable -- monitor test acc)")
+            else:
+                print(f"  gap < 0.12 -- healthy generalization")
+
+        # Combine histories (.get() safe when history2 is skip-guard dict)
         history = {
             k: history1.get(k, []) + history2.get(k, [])
             for k in ["train_loss", "train_acc", "val_loss", "val_acc", "val_f1"]
         }
-        history["best_val_acc"] = max(history1.get("best_val_acc", 0),
-                                      history2.get("best_val_acc", 0))
+        history["best_val_acc"] = max(
+            history1.get("best_val_acc", 0.0),
+            history2.get("best_val_acc", 0.0),
+        )
 
     # ── EfficientNetB0 ── mixed precision (autocast + GradScaler)
     elif MODEL == "efficientnet":
