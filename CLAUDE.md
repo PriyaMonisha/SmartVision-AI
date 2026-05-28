@@ -55,12 +55,17 @@ Retrain order after re-acquisition: mobilenet → efficientnet → resnet50 → 
 
 **Root Cause:** 69 images/class (100 total × 70% split) = ceiling ~59-60% for frozen features.
 
-**Section 5 Round 2 Plan (200 img/class = 140 train/class):**
-1. Re-run 01_data_acquisition.py (CPU, ~20-30 min) — checkpoint auto-collects 100 more/class
-2. Retrain MobileNetV2 first (lr=0.001, batch=32, epochs=25) — expect 76-83%
-3. Retrain EfficientNetB0 (lr=0.001 fixed, batch=32, epochs=25) — expect 79-86%
-4. Retrain ResNet50 (2-phase, layer4.2-only) — expect 76-81%
-5. Skip VGG16 retrain unless time permits
+**Section 5 Training Status — Round 2 (200 img/class, DOCUMENTED):**
+- MobileNetV2: 62.3% test / 61.1% val — 27.4pp train/val gap (overfitting)
+  - Root cause: features[14:] = 552 params/img + flat lr=1e-4 backbone
+  - Fixes committed (Round 3 prep): features[16:] (401/img), AdamW differential LR, dropout 0.4
+
+**Section 5 Round 3 Plan (MobileNetV2 — pending Colab run):**
+1. Colab: run 04_train_classifier.py with MODEL="mobilenet", FAST_MODE=False
+2. Target: 68-74% test accuracy (realistic for 200 samples/class)
+3. If >= 65%: proceed to EfficientNet with same settings
+4. If < 65%: investigate before EfficientNet
+5. Then: EfficientNet → ResNet50 (layer4.2-only)
 
 ---
 
