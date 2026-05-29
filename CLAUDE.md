@@ -60,12 +60,17 @@ Retrain order after re-acquisition: mobilenet → efficientnet → resnet50 → 
   - Root cause: features[14:] = 552 params/img + flat lr=1e-4 backbone
   - Fixes committed (Round 3 prep): features[16:] (401/img), AdamW differential LR, dropout 0.4
 
-**Section 5 Round 3 Plan (MobileNetV2 — pending Colab run):**
-1. Colab: run 04_train_classifier.py with MODEL="mobilenet", FAST_MODE=False
-2. Target: 68-74% test accuracy (realistic for 200 samples/class)
-3. If >= 65%: proceed to EfficientNet with same settings
-4. If < 65%: investigate before EfficientNet
-5. Then: EfficientNet → ResNet50 (layer4.2-only)
+**Section 5 Training Status — Round 3 (MobileNetV2, DOCUMENTED):**
+- MobileNetV2: 56.7% test — Phase 2 net contribution +0.1pp (56.1%→56.2% val)
+  - Root cause: backbone lr=1e-5 too conservative; epoch 1 dropped 8pp before recovering
+  - Deeper finding: frozen MobileNetV2 features ceiling ~56% on COCO crops at 140/class
+  - Architecture+data ceiling confirmed. Do NOT retrain MobileNetV2.
+
+**Decision: proceed to EfficientNet (head-only ceiling test), then ResNet50.**
+- EfficientNet: head-only, AdamW wd=1e-3, patience=7, CosineAnnealingLR
+- Result will reveal whether ceiling is MobileNetV2-specific or dataset-wide
+- If EfficientNet also ≤60%: collect 300+ samples/class before ResNet50
+- If EfficientNet reaches 65%+: ResNet50 next with same head-only settings
 
 ---
 
