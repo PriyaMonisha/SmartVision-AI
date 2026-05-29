@@ -493,17 +493,57 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
             history2.get("best_val_acc", 0.0),
         )
 
-    # ── EfficientNetB0 ── mixed precision (autocast + GradScaler)
+    # ── EfficientNetB0 ── head-only, AdamW, mixed precision
+    # Single-phase only (no backbone unfreeze -- head-only ceiling test after MobileNetV2 R3).
+    # MobileNetV2 R3 showed frozen features ceiling ~56%; EfficientNet features are richer
+    # (SE blocks, compound scaling, 5.3M vs 2.2M feature params) -- testing head-only ceiling.
     elif MODEL == "efficientnet":
-        optimizer = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-4)
-        scheduler = CosineAnnealingLR(optimizer, T_max=epochs)
-        scaler    = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
-        history = train(
-            model, train_loader, val_loader, optimizer, scheduler,
-            criterion, device, epochs=epochs, patience=5,
-            scaler=scaler, model_name=MODEL, save_path=save_path,
-            freeze_bn=True, grad_clip=1.0,
+        lr       = 1e-3
+        scaler   = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
+        save_path_eff = MODELS_DIR / "efficientnet_best.pt"
+
+        print(f"\nEfficientNetB0: head only ({epochs} epochs, AdamW lr={lr} wd=1e-3)")
+        print(f"  trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+
+        optimizer = AdamW(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            lr=lr, weight_decay=1e-3,
         )
+        scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
+
+        with mlflow.start_run(run_name="efficientnet_r1", nested=True):
+            mlflow.log_params({
+                "model":           "efficientnet",
+                "phase":           1,
+                "optimizer":       "AdamW",
+                "lr":              lr,
+                "weight_decay":    1e-3,
+                "scheduler":       f"CosineAnnealingLR(T_max={epochs},eta=1e-6)",
+                "epochs":          epochs,
+                "patience":        7,
+                "freeze_bn":       True,
+                "grad_clip":       1.0,
+                "dropout":         0.3,
+                "label_smoothing": 0.1,
+                "trainable_scope": "classifier_head_only",
+                "rationale":       "head-only ceiling test after MobileNetV2 arch ceiling at 56%",
+            })
+            history = train(
+                model, train_loader, val_loader,
+                optimizer, scheduler, criterion, device,
+                epochs=epochs, patience=7,
+                scaler=scaler, model_name="efficientnet",
+                save_path=save_path_eff, freeze_bn=True, grad_clip=1.0,
+            )
+            _val   = history.get("best_val_acc", 0.0)
+            _train = history["train_acc"][-1] if history["train_acc"] else 0.0
+            mlflow.log_metrics({
+                "best_val_acc": _val,
+                "final_train":  _train,
+                "overfit_gap":  _train - _val,
+            })
+
+        print(f"  EfficientNet: val={_val:.4f} train={_train:.4f} gap={_train-_val:.4f}pp")
 
     mlflow.log_metric("best_val_acc", history["best_val_acc"])
     print(f"\nBest val_acc: {history['best_val_acc']:.4f}")
