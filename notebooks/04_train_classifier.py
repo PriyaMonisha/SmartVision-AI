@@ -52,7 +52,7 @@ except Exception:
 # ================================================================
 # CHANGE THIS for each model — run the full notebook once per model
 # ================================================================
-MODEL = "mobilenet"   # Options: "vgg16" | "resnet50" | "mobilenet" | "efficientnet"
+MODEL = "resnet50"    # Options: "vgg16" | "resnet50" | "mobilenet" | "efficientnet"
 # ================================================================
 # Rule 1: FAST_MODE is a LOCAL variable passed as function param
 FAST_MODE = True  # False = full training; True = 3 epochs quick test
@@ -97,6 +97,7 @@ from src.data.dataset     import SmartVisionDataset, get_dataloaders
 from src.models.model_factory import (
     get_model,
     unfreeze_mobilenet_phase2,
+    unfreeze_efficientnet_phase2,
     unfreeze_resnet50_phase2,
     get_per_class_accuracy,
     # REMOVED: freeze_resnet50_phase1  (done inside get_model)
@@ -214,6 +215,55 @@ print(f"Trainable params: {trainable:,} / {total:,} ({100*trainable/total:.1f}%)
 # ## Step 4: Train
 
 # %%
+def _verify_scheduler_timing(n_warmup: int, n_cosine: int, base_lr: float = 1e-5) -> list:
+    """
+    Verify SequentialLR switches schedulers at the correct epoch.
+
+    Tests the milestone boundary — not individual scheduler monotonicity, which is
+    guaranteed by construction (LinearLR slope is always positive). The actual failure
+    mode is SequentialLR switching one epoch early or late due to PyTorch version
+    differences in milestone epoch indexing.
+
+    Uses a dummy nn.Parameter with no connection to the model — does NOT modify
+    any live model parameters or create conflicting optimizer states.
+    """
+    _dummy = nn.Parameter(torch.zeros(1))
+    _opt   = AdamW([_dummy], lr=base_lr)
+    _w     = LinearLR(_opt, start_factor=0.1, end_factor=1.0, total_iters=n_warmup)
+    _c     = CosineAnnealingLR(_opt, T_max=n_cosine, eta_min=1e-7)
+    _s     = SequentialLR(_opt, schedulers=[_w, _c], milestones=[n_warmup])
+    n      = n_warmup + min(n_cosine, 5)
+    lrs: list = []
+    for _ in range(n):
+        lrs.append(_opt.param_groups[0]["lr"])
+        _s.step()
+
+    # Check 1: last warmup epoch reaches peak LR (within one linear step).
+    # LinearLR monotonicity is guaranteed; this verifies warmup ran for n_warmup steps.
+    one_step = base_lr * (1.0 - 0.1) / n_warmup
+    assert abs(lrs[n_warmup - 1] - base_lr) <= one_step + 1e-9, (
+        f"Warmup did not reach peak LR before milestone. "
+        f"lrs[{n_warmup - 1}]={lrs[n_warmup - 1]:.3e} expected~{base_lr:.3e}. "
+        f"Schedule: {[f'{lr:.2e}' for lr in lrs]}"
+    )
+    # Check 2: first cosine epoch starts at base_lr (CosineAnnealingLR T=0 = eta_max).
+    # This is the actual milestone correctness test — fails if SequentialLR switches
+    # one epoch early or late.
+    assert abs(lrs[n_warmup] - base_lr) < 1e-7, (
+        f"SequentialLR did not switch to cosine at milestone={n_warmup}. "
+        f"lrs[{n_warmup}]={lrs[n_warmup]:.3e} expected={base_lr:.3e}. "
+        f"Likely PyTorch SequentialLR off-by-one. "
+        f"Schedule: {[f'{lr:.2e}' for lr in lrs]}"
+    )
+    # Check 3: cosine tail is non-increasing.
+    if len(lrs) > n_warmup + 1:
+        assert lrs[n_warmup] >= lrs[-1], (
+            f"Cosine not decreasing after warmup: "
+            f"{[f'{lr:.2e}' for lr in lrs[n_warmup:]]}"
+        )
+    return lrs
+
+
 # label_smoothing=0.1: penalizes overconfident predictions.
 # Early stopping monitors val_accuracy (not val_loss) — label_smoothing shifts
 # loss scale by ~0.31 nats uniformly, so val_loss thresholds are misleading.
@@ -311,15 +361,39 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
             freeze_bn=True, grad_clip=1.0,
         )
 
-        # Phase 2: unfreeze layer4.2 + fc, 2-epoch LR warmup before cosine
+        # Phase 2: unfreeze layer4.2 + fc, differential LR
+        # Lesson from EfficientNet + MobileNetV2: backbone lr=1e-5 disrupts head without
+        # actually adapting features (epoch-1 drop pattern). Use 3e-5 to bridge domain shift.
         unfreeze_resnet50_phase2(model)
-        print(f"ResNet50 Phase 2: fine-tune layer4.2+fc ({phase2_epochs} epochs, lr={lr})")
-        print(f"Phase 2 trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
-        optimizer2 = Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-4)
-        warmup_epochs = min(2, max(1, phase2_epochs - 1))
+        print(f"ResNet50 Phase 2: fine-tune layer4.2+fc ({phase2_epochs} epochs)")
+
+        # Identity-based param group separation
+        _rn_all      = {id(p): p for p in model.parameters() if p.requires_grad}
+        _rn_head     = [p for p in model.fc.parameters() if id(p) in _rn_all]
+        _rn_head_ids = {id(p) for p in _rn_head}
+        _rn_back     = [p for id_p, p in _rn_all.items() if id_p not in _rn_head_ids]
+
+        assert len(_rn_back) > 0, "layer4.2 params empty — check unfreeze_resnet50_phase2"
+        assert len(_rn_head) > 0, "fc params empty — check model.fc"
+
+        _rn_n_back = sum(p.numel() for p in _rn_back)
+        _rn_n_head = sum(p.numel() for p in _rn_head)
+        print(f"  backbone(layer4.2)={_rn_n_back:,} lr=3e-5 | head(fc)={_rn_n_head:,} lr=1e-3 | "
+              f"{(_rn_n_back+_rn_n_head)/3080:.0f} params/img")
+
+        optimizer2 = AdamW([
+            {"params": _rn_back, "lr": 3e-5, "weight_decay": 1e-4},
+            {"params": _rn_head, "lr": 1e-3, "weight_decay": 1e-4},
+        ])
+        warmup_epochs = max(1, min(2, phase2_epochs // 5))
+        cosine_epochs = max(phase2_epochs - warmup_epochs, 1)
         warmup_sched  = LinearLR(optimizer2, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs)
-        cosine_sched  = CosineAnnealingLR(optimizer2, T_max=max(phase2_epochs - warmup_epochs, 1), eta_min=1e-7)
-        scheduler2 = SequentialLR(optimizer2, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_epochs])
+        cosine_sched  = CosineAnnealingLR(optimizer2, T_max=cosine_epochs, eta_min=1e-7)
+        scheduler2    = SequentialLR(optimizer2, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_epochs])
+
+        _rn_sched_lrs = _verify_scheduler_timing(warmup_epochs, cosine_epochs, base_lr=3e-5)
+        print(f"  Scheduler verified: {[f'{r:.2e}' for r in _rn_sched_lrs]}")
+
         history2 = train(
             model, train_loader, val_loader, optimizer2, scheduler2,
             criterion, device, epochs=phase2_epochs, patience=8,
@@ -493,57 +567,215 @@ with mlflow.start_run(run_name=f"{MODEL}_{'fast' if FAST_MODE else 'full'}"):
             history2.get("best_val_acc", 0.0),
         )
 
-    # ── EfficientNetB0 ── head-only, AdamW, mixed precision
-    # Single-phase only (no backbone unfreeze -- head-only ceiling test after MobileNetV2 R3).
-    # MobileNetV2 R3 showed frozen features ceiling ~56%; EfficientNet features are richer
-    # (SE blocks, compound scaling, 5.3M vs 2.2M feature params) -- testing head-only ceiling.
+    # ── EfficientNetB0 ── 2-phase: head-only (P1) then fine-tune features[7:] (P2)
+    # P1 establishes linear head on frozen features (domain-shift ceiling test).
+    # P2 unfreezes top backbone blocks to bridge ImageNet→COCO crop domain shift.
     elif MODEL == "efficientnet":
-        lr       = 1e-3
-        scaler   = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
+        lr            = 1e-3
+        scaler        = torch.cuda.amp.GradScaler() if device.type == "cuda" else None
         save_path_eff = MODELS_DIR / "efficientnet_best.pt"
+        save_path_p1  = MODELS_DIR / "efficientnet_phase1_best.pt"
 
-        print(f"\nEfficientNetB0: head only ({epochs} epochs, AdamW lr={lr} wd=1e-3)")
+        phase1_epochs = min(10, epochs)
+        phase2_epochs = max(0, epochs - phase1_epochs)
+
+        # Separate loss criteria:
+        #   P1 head-only: label_smoothing=0.0 — smoothing suppresses gradient signal
+        #     through a single linear layer; head needs clean targets to carve decision
+        #     boundaries in the frozen 1280-dim feature space.
+        #   P2 backbone fine-tune: label_smoothing=0.1 — prevents overconfidence as
+        #     more parameters become trainable.
+        criterion_p1 = nn.CrossEntropyLoss(label_smoothing=0.0)
+        criterion_p2 = criterion   # label_smoothing=0.1 from above
+
+        # Pre-assign scalars and history2 for NameError safety if train() raises mid-run.
+        _p1_val, _p1_train = 0.0, 0.0
+        _p2_val, _p2_train = 0.0, 0.0
+        history2 = {
+            "train_loss": [], "train_acc": [], "val_loss": [], "val_acc": [], "val_f1": [],
+        }
+
+        # ── Phase 1: head only ──────────────────────────────────────────────
+        print(f"\nEfficientNetB0 Phase 1: head only ({phase1_epochs} epochs, lr={lr})")
         print(f"  trainable: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 
-        optimizer = AdamW(
+        optimizer1 = AdamW(
             filter(lambda p: p.requires_grad, model.parameters()),
             lr=lr, weight_decay=1e-3,
         )
-        scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
+        scheduler1 = CosineAnnealingLR(optimizer1, T_max=phase1_epochs, eta_min=1e-6)
 
-        with mlflow.start_run(run_name="efficientnet_r1", nested=True):
+        with mlflow.start_run(run_name="efficientnet_p1", nested=True):
             mlflow.log_params({
-                "model":           "efficientnet",
-                "phase":           1,
-                "optimizer":       "AdamW",
-                "lr":              lr,
-                "weight_decay":    1e-3,
-                "scheduler":       f"CosineAnnealingLR(T_max={epochs},eta=1e-6)",
-                "epochs":          epochs,
-                "patience":        7,
-                "freeze_bn":       True,
-                "grad_clip":       1.0,
-                "dropout":         0.3,
-                "label_smoothing": 0.1,
+                "model": "efficientnet", "phase": 1,
+                "optimizer": "AdamW", "lr": lr, "weight_decay": 1e-3,
+                "scheduler": f"CosineAnnealingLR(T_max={phase1_epochs},eta=1e-6)",
+                "epochs": phase1_epochs,
+                # patience == phase1_epochs intentionally disables early stopping in P1.
+                # Always complete head-warming before unfreezing backbone — a P1 plateau
+                # is expected given domain shift; it does not mean training is broken.
+                "patience": phase1_epochs,
+                "freeze_bn": True, "grad_clip": 1.0,
+                "dropout": 0.3, "label_smoothing": 0.0,
                 "trainable_scope": "classifier_head_only",
-                "rationale":       "head-only ceiling test after MobileNetV2 arch ceiling at 56%",
             })
-            history = train(
+            history1 = train(
                 model, train_loader, val_loader,
-                optimizer, scheduler, criterion, device,
-                epochs=epochs, patience=7,
-                scaler=scaler, model_name="efficientnet",
-                save_path=save_path_eff, freeze_bn=True, grad_clip=1.0,
+                optimizer1, scheduler1, criterion_p1, device,
+                epochs=phase1_epochs, patience=phase1_epochs,
+                scaler=scaler, model_name="efficientnet_p1",
+                save_path=save_path_p1, freeze_bn=True, grad_clip=1.0,
             )
-            _val   = history.get("best_val_acc", 0.0)
-            _train = history["train_acc"][-1] if history["train_acc"] else 0.0
-            mlflow.log_metrics({
-                "best_val_acc": _val,
-                "final_train":  _train,
-                "overfit_gap":  _train - _val,
-            })
+            # Compute and log inside context — run is still open here.
+            _p1_val = history1.get("best_val_acc")
+            if _p1_val is None:
+                _p1_val = max(history1["val_acc"]) if history1.get("val_acc") else 0.0
+                logger.warning(
+                    f"train() missing 'best_val_acc' key — using max(val_acc): {_p1_val:.4f}"
+                )
+            _p1_train = history1["train_acc"][-1] if history1.get("train_acc") else 0.0
+            try:
+                mlflow.log_metrics({
+                    "p1_best_val_acc": _p1_val,
+                    "p1_final_train":  _p1_train,
+                    "p1_overfit_gap":  _p1_train - _p1_val,
+                })
+            except Exception as _e:
+                logger.warning(f"MLflow P1 metric logging failed: {_e}")
+        # Phase 1 run closes here
 
-        print(f"  EfficientNet: val={_val:.4f} train={_train:.4f} gap={_train-_val:.4f}pp")
+        print(f"  Phase 1: val={_p1_val:.4f} train={_p1_train:.4f} gap={_p1_train-_p1_val:.4f}")
+
+        # ── Phase 2: fine-tune features[7:] ─────────────────────────────────
+        if phase2_epochs == 0:
+            print("  Phase 2 skipped (FAST_MODE).")
+            # Redirect best-checkpoint path so downstream eval finds "efficientnet_best.pt".
+            save_path_eff = save_path_p1
+            logger.info("FAST_MODE: efficientnet_best.pt redirected to Phase 1 checkpoint")
+            _p2_val, _p2_train = _p1_val, _p1_train
+            # history2 already pre-assigned as empty above
+        else:
+            unfreeze_efficientnet_phase2(model, from_block=7)
+
+            # Identity-based param group separation — wrapper-safe.
+            # Assumes no parameter replacement after unfreeze (no parametrize() hooks).
+            # EfficientNetB0 from torchvision is safe; verify if architecture changes.
+            _all_trainable   = {id(p): p for p in model.parameters() if p.requires_grad}
+            _head_params     = [p for p in model.classifier.parameters()
+                                if id(p) in _all_trainable]
+            _head_id_set     = {id(p) for p in _head_params}
+            _backbone_params = [p for id_p, p in _all_trainable.items()
+                                if id_p not in _head_id_set]
+
+            assert len(_backbone_params) > 0, (
+                "backbone_params empty — check unfreeze_efficientnet_phase2(from_block=7). "
+                f"Total trainable: "
+                f"{sum(p.numel() for p in model.parameters() if p.requires_grad):,}"
+            )
+            assert len(_head_params) > 0, (
+                "head_params empty — model.classifier has no trainable params. "
+                "Check Phase 1 checkpoint loaded correctly."
+            )
+
+            _n_back = sum(p.numel() for p in _backbone_params)
+            _n_head = sum(p.numel() for p in _head_params)
+            print(f"\nEfficientNetB0 Phase 2: features[7:] ({phase2_epochs} epochs)")
+            print(f"  backbone={_n_back:,} lr=1e-5 wd=1e-5 | "
+                  f"head={_n_head:,} lr=1e-4 wd=1e-3 | "
+                  f"{(_n_back + _n_head) / 3080:.0f} params/img")
+
+            optimizer2 = AdamW([
+                {"params": _backbone_params, "lr": 1e-5,  "weight_decay": 1e-5},
+                {"params": _head_params,     "lr": 1e-4,  "weight_decay": 1e-3},
+            ])
+
+            # Warmup: capped at 20% of phase2 epochs (prevents 60% warmup on short runs).
+            _warmup_epochs = max(1, min(3, phase2_epochs // 5))
+            _cosine_epochs = max(phase2_epochs - _warmup_epochs, 1)
+            _warmup_sched  = LinearLR(optimizer2, start_factor=0.1, end_factor=1.0,
+                                      total_iters=_warmup_epochs)
+            _cosine_sched  = CosineAnnealingLR(optimizer2, T_max=_cosine_epochs, eta_min=1e-7)
+            scheduler2     = SequentialLR(optimizer2,
+                                          schedulers=[_warmup_sched, _cosine_sched],
+                                          milestones=[_warmup_epochs])
+
+            # Verify milestone boundary before committing to a full training run.
+            _sched_lrs = _verify_scheduler_timing(_warmup_epochs, _cosine_epochs)
+            print(f"  Scheduler verified: {[f'{lr:.2e}' for lr in _sched_lrs]}")
+
+            with mlflow.start_run(run_name="efficientnet_p2", nested=True):
+                mlflow.log_params({
+                    "model": "efficientnet", "phase": 2,
+                    "optimizer": "AdamW_differential",
+                    "lr_backbone": 1e-5, "lr_head": 1e-4,
+                    "wd_backbone": 1e-5, "wd_head": 1e-3,
+                    "scheduler": (
+                        f"LinearWarmup({_warmup_epochs}ep)"
+                        f"+CosineAnnealing({_cosine_epochs}ep)"
+                    ),
+                    "epochs": phase2_epochs, "patience": 7,
+                    "freeze_bn": True, "grad_clip": 1.0,
+                    "dropout": 0.3, "label_smoothing": 0.1,
+                    "trainable_scope": "features[7:]+classifier",
+                    "from_block": 7,
+                    "backbone_params": _n_back,
+                    "params_per_img": round((_n_back + _n_head) / 3080),
+                    "warmup_epochs": _warmup_epochs,
+                })
+                history2 = train(
+                    model, train_loader, val_loader,
+                    optimizer2, scheduler2, criterion_p2, device,
+                    epochs=phase2_epochs, patience=7,
+                    scaler=scaler, model_name="efficientnet_p2",
+                    save_path=save_path_eff, freeze_bn=True, grad_clip=1.0,
+                )
+                # Compute and log inside context — run still open
+                _p2_val = history2.get("best_val_acc")
+                if _p2_val is None:
+                    _p2_val = max(history2["val_acc"]) if history2.get("val_acc") else _p1_val
+                    logger.warning(
+                        f"train() missing 'best_val_acc' key — using max(val_acc): {_p2_val:.4f}"
+                    )
+                _p2_train = history2["train_acc"][-1] if history2.get("train_acc") else _p1_train
+                _p2_gap   = _p2_train - _p2_val
+                try:
+                    mlflow.log_metrics({
+                        "p2_best_val_acc": _p2_val,
+                        "p2_final_train":  _p2_train,
+                        "p2_overfit_gap":  _p2_gap,
+                    })
+                except Exception as _e:
+                    logger.warning(f"MLflow P2 metric logging failed: {_e}")
+            # Phase 2 run closes here
+
+            print(f"  Phase 2: val={_p2_val:.4f} train={_p2_train:.4f} gap={_p2_gap:.4f}")
+            if _p2_gap > 0.20:
+                logger.warning(
+                    f"Phase 2 overfit gap {_p2_gap:.3f} > 0.20. Investigation order: "
+                    "(1) increase wd_backbone 1e-5 → 1e-4, "
+                    "(2) lower grad_clip 1.0 → 0.5, "
+                    "(3) reduce from_block 7 → 8 on next run. "
+                    "Check test accuracy BEFORE changing architecture."
+                )
+            elif _p2_gap > 0.12:
+                print("  NOTE gap 0.12-0.20: monitor test accuracy")
+            else:
+                print("  gap < 0.12 — healthy generalisation")
+
+        # Merge histories.
+        # _SCALAR_HISTORY_KEYS: not plottable series — re-define locally in plotting cells.
+        # Pattern: for k, v in history.items(): if k not in _SCALAR_HISTORY_KEYS: plot(v)
+        history = {
+            k: history1.get(k, []) + history2.get(k, [])
+            for k in ["train_loss", "train_acc", "val_loss", "val_acc", "val_f1"]
+        }
+        history["best_val_acc"]      = max(_p1_val, _p2_val)   # resolved values, not re-fetch
+        history["phase1_epochs_run"] = len(history1.get("train_acc", []))
+        history["phase2_epochs_run"] = len(history2.get("train_acc", []))
+        history["phase_boundary"]    = history["phase1_epochs_run"]
+        # Sync save_path so Step 5 load_model call finds the correct checkpoint.
+        # In FAST_MODE, save_path_eff was redirected to save_path_p1 above.
+        save_path = save_path_eff
 
     mlflow.log_metric("best_val_acc", history["best_val_acc"])
     print(f"\nBest val_acc: {history['best_val_acc']:.4f}")
@@ -581,14 +813,32 @@ for cls_name, cls_acc in per_class.items():
 # ## Step 6: Confusion Matrix
 
 # %%
+# TTA: average standard + horizontally-flipped predictions.
+# Valid because RandomHorizontalFlip is in get_train_transforms().
+# NOTE: if training augmentation changes, audit this assumption.
 best_model.eval()
 all_preds, all_labels = [], []
+_tta_sanity_done = False
+
 with torch.no_grad():
     for images, labels in test_loader:
-        images = images.to(device)
-        preds  = best_model(images).argmax(dim=1)
+        images  = images.to(device)
+        flipped = torch.flip(images, dims=[3])
+        logits  = best_model(images) + best_model(flipped)
+        preds   = logits.argmax(dim=1)
         all_preds.extend(preds.cpu().numpy())
         all_labels.extend(labels.numpy())
+
+        # Sanity check on first batch only — one extra forward pass, no iterator re-creation.
+        # Not an assert: a strong model can legitimately produce 0 flip-changed predictions.
+        if not _tta_sanity_done:
+            _p_no_tta  = best_model(images).argmax(dim=1)
+            _n_changed = (preds != _p_no_tta).sum().item()
+            logger.info(
+                f"TTA sanity (first batch): {_n_changed}/{len(preds)} "
+                "predictions changed by flip"
+            )
+            _tta_sanity_done = True
 
 cm = confusion_matrix(all_labels, all_preds)
 fig, ax = plt.subplots(figsize=(14, 12))

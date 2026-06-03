@@ -37,12 +37,12 @@ RANDOM_STATE = 42
 # ── Model dimensions ─────────────────────────────────────────────────────────
 IMAGE_SIZE      = 224
 YOLO_IMAGE_SIZE = 640
-NUM_CLASSES     = 25
+NUM_CLASSES     = 22   # 25 - 3 (stop sign, cow, elephant — network acquisition failed)
 
 # ── Class definitions ─────────────────────────────────────────────────────────
-# Source of truth for class ordering (0-24).
-# ORDER matches mentor's notebook (by ascending HF category ID).
-# Mentor notebook included 'train' (vehicle) making it 26 — we exclude it (project PDF = 25).
+# Source of truth for class ordering (0-21).
+# 'stop sign' (HF 11), 'cow' (HF 19), 'elephant' (HF 20) removed — acquisition failed.
+# YOLO detection labels on disk still use 25-class indices; remap in Section 6.
 CLASSES = [
     "person",        # 0
     "bicycle",       # 1
@@ -52,23 +52,20 @@ CLASSES = [
     "bus",           # 5
     "truck",         # 6  (HF cat 7 — skipping 'train' at HF cat 6)
     "traffic light", # 7
-    "stop sign",     # 8
-    "bench",         # 9
-    "bird",          # 10
-    "cat",           # 11
-    "dog",           # 12
-    "horse",         # 13
-    "cow",           # 14
-    "elephant",      # 15
-    "bottle",        # 16
-    "cup",           # 17
-    "bowl",          # 18
-    "pizza",         # 19
-    "cake",          # 20
-    "chair",         # 21
-    "couch",         # 22
-    "potted plant",  # 23
-    "bed",           # 24
+    "bench",         # 8  (was 9)
+    "bird",          # 9  (was 10)
+    "cat",           # 10 (was 11)
+    "dog",           # 11 (was 12)
+    "horse",         # 12 (was 13)
+    "bottle",        # 13 (was 16)
+    "cup",           # 14 (was 17)
+    "bowl",          # 15 (was 18)
+    "pizza",         # 16 (was 19)
+    "cake",          # 17 (was 20)
+    "chair",         # 18 (was 21)
+    "couch",         # 19 (was 22)
+    "potted plant",  # 20 (was 23)
+    "bed",           # 21 (was 24)
 ]
 
 # Maps class name → HuggingFace detection-datasets/coco 0-indexed category ID.
@@ -83,14 +80,11 @@ SELECTED_CLASSES: dict[str, int] = {
     "bus":           5,
     "truck":         7,   # HF ID 7 — HF ID 6 = 'train' (vehicle), excluded
     "traffic light": 9,
-    "stop sign":     11,
     "bench":         13,
     "bird":          14,
     "cat":           15,
     "dog":           16,
     "horse":         17,
-    "cow":           19,
-    "elephant":      20,
     "bottle":        39,
     "cup":           41,
     "bowl":          45,
@@ -113,7 +107,7 @@ CLASS_TO_IDX: dict[str, int] = {cls: idx for idx, cls in enumerate(CLASSES)}
 
 # ── Dataset splits ────────────────────────────────────────────────────────────
 TRAIN_SPLIT, VAL_SPLIT, TEST_SPLIT = 0.70, 0.15, 0.15
-IMAGES_PER_CLASS      = 100
+IMAGES_PER_CLASS      = 200   # was 100 — 69/class proved insufficient (59% ceiling)
 FAST_IMAGES_PER_CLASS = 10
 
 # ── Per-model training config ─────────────────────────────────────────────────
@@ -121,8 +115,8 @@ FAST_IMAGES_PER_CLASS = 10
 MODEL_CONFIGS: dict[str, dict] = {
     "vgg16":        {"lr": 0.001,  "epochs": 20, "batch": 16, "unfreeze": "none"},
     "resnet50":     {"lr": 0.0001, "epochs": 25, "batch": 32, "unfreeze": "layer3+"},
-    "mobilenet":    {"lr": 0.001,  "epochs": 20, "batch": 64, "unfreeze": "none"},
-    "efficientnet": {"lr": 0.0001, "epochs": 25, "batch": 32, "unfreeze": "none"},
+    "mobilenet":    {"lr": 0.001,  "epochs": 25, "batch": 32, "unfreeze": "none"},
+    "efficientnet": {"lr": 0.001,  "epochs": 25, "batch": 32, "unfreeze": "none"},  # was 0.0001 — too slow for head-only
 }
 
 # ── YOLO ──────────────────────────────────────────────────────────────────────

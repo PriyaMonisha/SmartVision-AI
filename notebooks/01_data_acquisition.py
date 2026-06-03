@@ -76,7 +76,8 @@ from config import (
 )
 from src.data.loader import (
     verify_coco_mapping, load_checkpoint, save_checkpoint,
-    check_crop_quality, save_classification_crop, save_detection_sample,
+    check_crop_quality, check_person_overlap,
+    save_classification_crop, save_detection_sample,
     get_split, bbox_to_yolo,
 )
 from src.utils.helpers import save_json, load_json, create_hub_repo
@@ -154,8 +155,34 @@ if remaining_classes:
 
     total_collected = sum(progress.values())
     images_processed = 0
-    MAX_ITER = 80000  # increased from 60k — quality filter means more streams needed
-    rejection_stats = {"too_small": 0, "too_tiny": 0, "bad_aspect": 0, "accepted": 0}
+    MAX_ITER = 150000  # raised from 80k — 80px floor needs more streaming for small-object classes
+
+    # Overlap threshold for chair/person co-occurrence filter.
+    # 0.50 = conservative: reject when person covers >50% of chair bbox area.
+    # Adjust to 0.30 in a second run if chair accuracy remains low.
+    CHAIR_PERSON_THRESHOLD = 0.50
+
+    rejection_stats = {
+        "too_small":            0,
+        "too_tiny":             0,
+        "bad_aspect":           0,
+        "accepted":             0,
+        "chair_person_overlap": 0,
+    }
+
+    print(f"Config: MAX_ITER={MAX_ITER}  CHAIR_PERSON_THRESHOLD={CHAIR_PERSON_THRESHOLD}")
+    print(f"Quality gates: min_crop=80px, min_area_ratio=2%")
+
+    # One-time bbox format verification — confirms [x,y,w,h] before streaming starts.
+    # Fails immediately if HF dataset changes to [x1,y1,x2,y2] format.
+    _fmt_sample = next(iter(dataset))
+    _fmt_bbox   = _fmt_sample["objects"]["bbox"][0]
+    assert _fmt_bbox[2] < _fmt_sample["image"].width, (
+        f"bbox[2]={_fmt_bbox[2]} >= image_width={_fmt_sample['image'].width}. "
+        "Format appears to be [x1,y1,x2,y2], not [x,y,w,h]. "
+        "Update compute_overlap_ratio and check_crop_quality."
+    )
+    print(f"OK Bbox format confirmed [x,y,w,h]. Sample: {_fmt_bbox}")
 
     for idx, item in enumerate(dataset):
         if images_processed >= MAX_ITER:
@@ -198,6 +225,19 @@ if remaining_classes:
             if quality != "ok":
                 rejection_stats[quality] += 1
                 continue
+
+            # Chair-specific: reject crops where a person dominates the bbox.
+            # bboxes/cat_list are full-image variables (loaded above this loop).
+            # SELECTED_CLASSES["person"] = 0 is the HF 0-indexed person category ID.
+            if class_name == "chair":
+                if check_person_overlap(
+                    target_bbox, bboxes, cat_list,
+                    person_cat_id=SELECTED_CLASSES["person"],
+                    threshold=CHAIR_PERSON_THRESHOLD,
+                ):
+                    rejection_stats["chair_person_overlap"] += 1
+                    continue
+
             rejection_stats["accepted"] += 1
 
             class_images[class_name].append({
@@ -215,19 +255,41 @@ if remaining_classes:
 
     print(f"\n Stream complete: processed {images_processed} images")
 
-    total_checked = sum(rejection_stats.values())
-    if total_checked > 0:
+    _total = sum(rejection_stats.values())
+    if _total == 0:
+        print("  WARNING: No crops evaluated — check streaming loop.")
+    else:
         print("\n=== Crop Quality Report ===")
-        print(f"  Accepted:          {rejection_stats['accepted']:5d}  ({100*rejection_stats['accepted']/total_checked:.1f}%)")
-        print(f"  Rejected (small):  {rejection_stats['too_small']:5d}  ({100*rejection_stats['too_small']/total_checked:.1f}%)  <48px")
-        print(f"  Rejected (tiny):   {rejection_stats['too_tiny']:5d}  ({100*rejection_stats['too_tiny']/total_checked:.1f}%)  <1% image area")
-        print(f"  Rejected (aspect): {rejection_stats['bad_aspect']:5d}  ({100*rejection_stats['bad_aspect']/total_checked:.1f}%)  >5:1 ratio")
-        print(f"  Total checked:     {total_checked:5d}")
-        accept_pct = 100 * rejection_stats["accepted"] / total_checked
-        if accept_pct < 50:
-            print("  WARNING: <50% accepted — consider relaxing thresholds")
-        elif accept_pct > 90:
-            print("  NOTE: >90% accepted — filter had minimal impact; noise may be in content, not size")
+        for _key, _label in [
+            ("accepted",             "Accepted"),
+            ("too_small",            "Rejected (too_small  <80px)"),
+            ("too_tiny",             "Rejected (too_tiny   <2% area)"),
+            ("bad_aspect",           "Rejected (bad_aspect >5:1)"),
+            ("chair_person_overlap", f"Rejected (chair/person >={CHAIR_PERSON_THRESHOLD:.2f})"),
+        ]:
+            _n = rejection_stats.get(_key, 0)
+            print(f"  {_label:<50} {_n:5d}  ({100*_n/_total:.1f}%)")
+
+    # Per-class count check — stricter gates hit small-object classes harder
+    print(f"\n=== Per-class collection counts (target={target}) ===")
+    for _cls in sorted(CLASSES, key=lambda c: class_counts.get(c, 0)):
+        _count  = class_counts.get(_cls, 0)
+        _status = "OK" if _count >= target * 0.90 else "WARNING <90%"
+        print(f"  {_status:<14} {_cls:<20} {_count:>4}/{target}")
+
+    _under_target = {
+        _cls: class_counts.get(_cls, 0)
+        for _cls in CLASSES
+        if class_counts.get(_cls, 0) < target * 0.90
+    }
+    if _under_target:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            f"{len(_under_target)} classes below 90% of target ({target}): "
+            + ", ".join(f"{c}={n}" for c, n in
+                        sorted(_under_target.items(), key=lambda x: x[1]))
+            + ". Consider increasing MAX_ITER."
+        )
 
 else:
     print("OK All classes already collected per checkpoint. Reload images from disk if needed.")

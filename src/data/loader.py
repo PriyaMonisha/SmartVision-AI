@@ -59,8 +59,8 @@ def verify_coco_mapping() -> None:
     # No duplicate HF IDs
     hf_ids = list(SELECTED_CLASSES.values())
     assert len(hf_ids) == len(set(hf_ids)), "Duplicate HF category IDs in SELECTED_CLASSES"
-    logger.info("COCO mapping verified: 25 classes, no duplicates")
-    print("COCO mapping OK: 25 classes, HF 0-indexed IDs, no duplicates")
+    logger.info(f"COCO mapping verified: {NUM_CLASSES} classes, no duplicates")
+    print(f"COCO mapping OK: {NUM_CLASSES} classes, HF 0-indexed IDs, no duplicates")
 
 
 # ── Checkpoint / resume ───────────────────────────────────────────────────────
@@ -101,6 +101,89 @@ def bbox_to_yolo(
     return [class_idx, x_center, y_center, w_norm, h_norm]
 
 
+# ── Overlap utilities ─────────────────────────────────────────────────────────
+
+def compute_overlap_ratio(target_box: list, other_box: list) -> float:
+    """
+    Fraction of target_box area covered by other_box.
+    Expects [x, y, w, h] format (top-left corner + dimensions).
+
+    Use instead of IoU when checking whether a large object (person) dominates
+    a smaller object (chair). IoU penalises the large union area and under-detects
+    containment when other_box >> target_box.
+
+    Returns float in [0, 1].
+    """
+    assert target_box[2] > 0 and target_box[3] > 0, (
+        f"target_box width/height must be positive: {target_box}. "
+        "Ensure bbox format is [x, y, w, h], not [x1, y1, x2, y2]."
+    )
+    assert other_box[2] > 0 and other_box[3] > 0, (
+        f"other_box width/height must be positive: {other_box}. "
+        "Ensure bbox format is [x, y, w, h], not [x1, y1, x2, y2]."
+    )
+    tx1, ty1 = target_box[0], target_box[1]
+    tx2, ty2 = target_box[0] + target_box[2], target_box[1] + target_box[3]
+    ox1, oy1 = other_box[0], other_box[1]
+    ox2, oy2 = other_box[0] + other_box[2], other_box[1] + other_box[3]
+
+    inter_x1 = max(tx1, ox1);  inter_y1 = max(ty1, oy1)
+    inter_x2 = min(tx2, ox2);  inter_y2 = min(ty2, oy2)
+    inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
+
+    target_area = target_box[2] * target_box[3]
+    return inter_area / target_area if target_area > 0 else 0.0
+
+
+def check_person_overlap(
+    target_bbox: list,
+    all_bboxes: list,
+    all_cat_ids: list,
+    person_cat_id: int,
+    threshold: float = 0.50,
+) -> bool:
+    """
+    Return True if any person bbox covers > threshold fraction of target_bbox area.
+
+    Uses compute_overlap_ratio, NOT IoU. IoU under-detects containment when
+    person bbox is larger than chair bbox (the common COCO case).
+
+    person_cat_id: must match the ID system in all_cat_ids.
+    In this project: all_cat_ids contains HF 0-indexed IDs (loader.py line 8).
+    Pass SELECTED_CLASSES["person"] = 0.
+
+    threshold: 0.50 default (conservative). Adjust to 0.30 in a second
+    re-collection run if chair accuracy remains low after first run.
+    """
+    for bbox, cat_id in zip(all_bboxes, all_cat_ids):
+        if cat_id != person_cat_id:
+            continue
+        if compute_overlap_ratio(target_bbox, bbox) > threshold:
+            return True
+    return False
+
+
+# ── Crop quality gates ────────────────────────────────────────────────────────
+
+def check_crop_quality(img: Image.Image, x1: int, y1: int, x2: int, y2: int) -> str:
+    """Return 'ok' or a rejection reason string.
+
+    Gates (all three must pass):
+      too_small  : crop < 48×48px in original image (upscale > 4.7× → blurry)
+      too_tiny   : bbox covers < 1% of image area (invisible/background object)
+      bad_aspect : longer side > 5× shorter side (sliver or letterbox crop)
+    """
+    crop_w = x2 - x1
+    crop_h = y2 - y1
+    if crop_w < 80 or crop_h < 80:
+        return "too_small"
+    if (crop_w * crop_h) / (img.width * img.height) < 0.02:
+        return "too_tiny"
+    if max(crop_w, crop_h) / min(crop_w, crop_h) > 5.0:
+        return "bad_aspect"
+    return "ok"
+
+
 # ── Crop and save classification image ───────────────────────────────────────
 
 def save_classification_crop(
@@ -111,8 +194,16 @@ def save_classification_crop(
     img_idx: int,
     classification_dir: Path,
     crop_size: int = 224,
-) -> bool:
-    """Crop object bbox from image, resize to 224×224, save to split/class folder."""
+) -> bool | str:
+    """Crop object bbox, apply quality gates, resize to 224×224, save.
+
+    Returns:
+        True          — saved successfully
+        "too_small"   — crop < 48px in either dimension
+        "too_tiny"    — bbox covers < 1% of image area
+        "bad_aspect"  — aspect ratio > 5:1
+        False         — unexpected save error
+    """
     x, y, w, h = bbox
     x1 = max(0, int(x))
     y1 = max(0, int(y))
@@ -120,7 +211,11 @@ def save_classification_crop(
     y2 = min(img.height, int(y + h))
 
     if x2 <= x1 or y2 <= y1:
-        return False
+        return "too_small"
+
+    quality = check_crop_quality(img, x1, y1, x2, y2)
+    if quality != "ok":
+        return quality
 
     try:
         crop = img.crop((x1, y1, x2, y2))

@@ -41,11 +41,12 @@ At the end of EVERY section, before declaring it complete:
 ---
 
 ## Current Status
-**Active Section:** Section 5 🔄 (CNN Training — data re-acquisition in progress)
-**Last Working File:** config.py, src/data/augmentor.py, notebooks/04_train_classifier.py
-**Last Decision Made:** Root cause confirmed — 69 img/class is insufficient. All 4 model runs
-documented. IMAGES_PER_CLASS changed 100→200. EfficientNet lr bug fixed 0.0001→0.001.
-Retrain order after re-acquisition: mobilenet → efficientnet → resnet50 → (skip vgg16).
+**Active Section:** Section 6 🔄 (YOLOv8 Detection — next)
+**Last Working File:** notebooks/04_train_classifier.py, src/data/loader.py, src/data/dataset.py
+**Last Decision Made:** Section 5 complete. All 4 CNNs trained. ResNet50 best at 65.5% test.
+Root cause of ceiling: data volume (1464 params/img → overfitting Phase 2). Re-collection
+ready (quality gates raised to 80px, chair person-overlap filter added) but deferred until
+after Section 6-7 to maintain capstone progress.
 
 **Section 5 Training Status — Round 1 (69 img/class, DOCUMENTED):**
 - VGG16:         59.5% val — overfitting Phase 2 (4,100 params/img)
@@ -66,11 +67,29 @@ Retrain order after re-acquisition: mobilenet → efficientnet → resnet50 → 
   - Deeper finding: frozen MobileNetV2 features ceiling ~56% on COCO crops at 140/class
   - Architecture+data ceiling confirmed. Do NOT retrain MobileNetV2.
 
-**Decision: proceed to EfficientNet (head-only ceiling test), then ResNet50.**
-- EfficientNet: head-only, AdamW wd=1e-3, patience=7, CosineAnnealingLR
-- Result will reveal whether ceiling is MobileNetV2-specific or dataset-wide
-- If EfficientNet also ≤60%: collect 300+ samples/class before ResNet50
-- If EfficientNet reaches 65%+: ResNet50 next with same head-only settings
+**Section 5 Training Status — EfficientNetB0 (200 img/class, random split, DOCUMENTED):**
+- EfficientNetB0: 58.9% test / 59.2% val best
+  - P1 (head-only, 10 ep): val=58.5% — frozen features ceiling confirmed ~59%
+  - P2 (features[7:], lr=1e-5, 15 ep): val=59.2% — net gain +0.76pp (training failure)
+  - Root cause: backbone lr=1e-5 too conservative; epoch 1 dropped 3.78pp before recovering
+  - Same pattern as MobileNetV2 R3. Architecture+data ceiling ~59% for frozen EfficientNetB0 on COCO crops.
+  - Decision: do NOT retrain EfficientNet. Apply lesson to ResNet50: backbone lr=3e-5.
+
+**Section 5 Training Status — ResNet50 (200 img/class, random split, DOCUMENTED):**
+- ResNet50: 65.5% test / 63.6% val best — best result in Section 5
+  - P1 (head-only, 6 ep): val=62.3% — best head-only result; 2048-dim features strongest
+  - P2 (layer4.2, lr=3e-5, 19 ep): val=63.6% — net gain +1.37pp; heavy overfitting (train→82%, val→63%)
+  - Root cause: 1464 params/img at 3080 training samples → overfitting dominates Phase 2
+  - Fix available: collect 400/class with 80px quality gates → Phase 2 should reach 70-75%
+  - Deferred until after Section 6-7 to maintain progress
+
+**Section 5 Final Summary:**
+| Model | Test Acc | Phase 2 Gain | Root Cause of Ceiling |
+|-------|----------|-------------|----------------------|
+| VGG16 | 59.5% | - | Architecture + overfitting |
+| MobileNetV2 | 56.7% | +0.1pp | backbone lr=1e-5 too conservative |
+| EfficientNetB0 | 58.9% | +0.76pp | backbone lr=1e-5 too conservative |
+| ResNet50 | **65.5%** | +1.37pp | Data volume (1464 params/img) |
 
 ---
 
@@ -91,12 +110,13 @@ When you see a POST-COMMIT REMINDER, do ALL THREE immediately:
 - [x] Section 3: EDA (class distribution, image quality, chi-squared balance test, 7 figures)
 - [x] Section 4: Preprocessing + Augmentation + YOLO Annotation Validation
 
+### Completed ✅ (continued)
+- [x] Section 5: CNN Training (Colab T4) — ALL 4 CNNs trained
+  - VGG16: 59.5% | MobileNetV2: 56.7% | EfficientNetB0: 58.9% | ResNet50: **65.5%** ← best
+
 ### In Progress 🔄
-- [ ] Section 5: CNN Training (Colab T4)
-  - [x] VGG16: 59.5% — accepted (architecture limitation, overfitting Phase 2)
-  - [ ] ResNet50: layer4.2-only Phase 2 fix applied (fc unfreeze bug fixed), retrain PENDING
-  - [ ] MobileNetV2: not started
-  - [ ] EfficientNetB0: not started
+
+- [ ] Section 6: YOLOv8 Detection  ← NEXT
 
 ### Remaining 📋
 - [ ] Section 6: YOLOv8 Detection

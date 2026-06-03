@@ -2,10 +2,11 @@
 # Model construction and phase-based unfreeze strategies for SmartVision.
 #
 # Public API (import these in the notebook):
-#   get_model(name, num_classes, dropout)  -> nn.Module
-#   unfreeze_mobilenet_phase2(model)       -> None
-#   unfreeze_resnet50_phase2(model)        -> None
-#   get_per_class_accuracy(...)            -> dict[str, float]
+#   get_model(name, num_classes, dropout)       -> nn.Module
+#   unfreeze_mobilenet_phase2(model)            -> None
+#   unfreeze_efficientnet_phase2(model, block)  -> None
+#   unfreeze_resnet50_phase2(model)             -> None
+#   get_per_class_accuracy(...)                 -> dict[str, float]
 #
 # Internal only (_build_*, _log_trainable) -- do NOT import in notebook.
 #
@@ -123,6 +124,33 @@ def unfreeze_mobilenet_phase2(model: nn.Module) -> None:
             for param in block.parameters():
                 param.requires_grad = True
     _log_trainable(model, "MobileNetV2 Phase 2 (features[16:])")
+
+
+def unfreeze_efficientnet_phase2(model: nn.Module, from_block: int = 7) -> None:
+    """
+    Unfreeze EfficientNetB0 features[from_block:] for Phase 2 fine-tuning.
+
+    EfficientNetB0 feature block layout (9 blocks, indices 0-8):
+      [0] stem Conv2d (3→32)
+      [1] MBConv1 ×1  (16ch)
+      [2] MBConv6 ×2  (24ch)
+      [3] MBConv6 ×2  (40ch)
+      [4] MBConv6 ×3  (80ch)
+      [5] MBConv6 ×3  (112ch)
+      [6] MBConv6 ×4  (192ch)  ← ~2.5M params
+      [7] MBConv6 ×1  (320ch)  ← default start (~1.5M params)
+      [8] top Conv2d  (1280ch) ← ~413K params
+
+    Default from_block=7 → ~1.9M backbone params / 3080 train ≈ 617 params/img.
+    Exceeds model_factory "safe" threshold (500/img) but AdamW wd=1e-5 + dropout +
+    3-epoch warmup + grad_clip compensate. Use from_block=6 ONLY after increasing
+    wd_backbone to 1e-4 AND confirming val loss still plateaued at from_block=7.
+    """
+    for idx, block in enumerate(model.features):
+        if idx >= from_block:
+            for param in block.parameters():
+                param.requires_grad = True
+    _log_trainable(model, f"EfficientNetB0 Phase 2 (features[{from_block}:])")
 
 
 def unfreeze_resnet50_phase2(model: nn.Module) -> None:

@@ -32,7 +32,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 try:
     from google.colab import drive
     drive.mount('/content/drive')
-    COLAB_ROOT = '/content/drive/MyDrive/SmartVisionAI'
+    COLAB_ROOT = '/content/drive/MyDrive/Smart Vision AI'
     sys.path.insert(0, COLAB_ROOT)
     os.chdir(COLAB_ROOT)
     print("Running in Colab")
