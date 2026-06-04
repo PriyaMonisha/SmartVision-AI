@@ -41,13 +41,14 @@ At the end of EVERY section, before declaring it complete:
 ---
 
 ## Current Status
-**Active Section:** Section 8 🔄 (FastAPI + Redis — next)
-**Last Working File:** notebooks/06_model_comparison.py
-**Last Decision Made:** Section 7 complete. CPU benchmarks (vgg16=229ms, mobilenet=39ms,
-efficientnet=51ms, resnet50=115ms, yolov8n=154ms NMS). MLflow: 5 runs logged to SQLite
-(2 experiments). Drift baseline: MobileNet val-split, 30/class, 22 .npy score files.
-Champion: resnet50 65.5%. Val split used (not train — train confidence is inflated).
-model_factory.py updated: pretrained=False param for topology-correct CPU benchmarking.
+**Active Section:** Section 9 🔄 (KS Drift + Prometheus — next)
+**Last Working File:** api/main.py, notebooks/07_fastapi_smoke_test.py
+**Last Decision Made:** Section 8 complete. FastAPI lifespan (Rule 32), get_running_loop
+(Rule 31), non-blocking model loading via run_in_executor. Redis cache-aside with 1s
+socket_connect_timeout (graceful degradation). cached-key-pop fix prevents TypeError on
+cache hit. UploadFile for binary (not Form). /metrics returns CONTENT_TYPE_LATEST.
+Smoke test: YOLO detect PASS (2 detections, 3.9s cold start), /metrics PASS, /health PASS.
+Classify SKIP: resnet50_best.pt not locally available -- copy from Colab models/ to enable.
 
 **Section 5 Training Status — Round 1 (69 img/class, DOCUMENTED):**
 - VGG16:         59.5% val — overfitting Phase 2 (4,100 params/img)
@@ -123,12 +124,18 @@ When you see a POST-COMMIT REMINDER, do ALL THREE immediately:
   - Drift baseline: MobileNet, val split (30/class), 22 .npy score files, correct+incorrect distributions
   - model_factory.py: pretrained=False param for topology-correct benchmarking
 
+- [x] Section 8: FastAPI + Redis ✅
+  - lifespan context manager, get_running_loop, run_in_executor for non-blocking startup
+  - POST /classify (ResNet50/MobileNet, Redis cache-aside, 24h TTL)
+  - POST /detect (YOLOv8n, np.array YOLO input, 1h TTL)
+  - GET /health (503 when loading), GET /metrics (CONTENT_TYPE_LATEST)
+  - Smoke test: YOLO detect PASS, /metrics PASS, /health PASS
+
 ### In Progress 🔄
 
-- [ ] Section 8: FastAPI + Redis  ← NEXT
+- [ ] Section 9: KS Drift + Prometheus  ← NEXT
 
 ### Remaining 📋
-- [ ] Section 8: FastAPI + Redis
 - [ ] Section 9: KS Drift + Prometheus
 - [ ] Section 10: Streamlit Multi-Page App
 - [ ] Section 11: Docker Compose + Grafana + Airflow Scaffolding

@@ -420,13 +420,40 @@ def bbox_to_yolo(bbox, img_w, img_h, class_idx):
 **Q35. How does Redis caching work? What happens on a cache miss?**
 
 > When a classification request arrives with an image:
-> 1. Compute a cache key (e.g., SHA256 hash of image bytes)
-> 2. Try `redis.get(key)` — if HIT, return the cached JSON result directly (no inference)
-> 3. If MISS — run model inference, store result in Redis with TTL, return result
+> 1. Compute key: `sv:classify:{SHA256_32chars}:{model_name}:{model_hash_8chars}`
+> 2. HIT: `pop("cached", None)` from stored dict, return `ClassifyResponse(**data, cached=True)`
+> 3. MISS: run inference, `pop("cached")` before storing, `cache.set(key, payload, TTL)`
 >
-> **TTLs**: Classification: 86,400s (24 hours) — the same image is likely to be requested again (demo scenario, product catalogue). Detection: 3,600s (1 hour) — scenes change more frequently than individual objects.
+> **Why pop "cached" before storing?** `result.model_dump()` includes `cached=False`. Unpacking `**cached_data, cached=True` passes `cached` twice — Python raises `TypeError: keyword argument repeated` on every cache hit. Fix: store without the `cached` field; inject it on retrieval.
 >
-> **Graceful degradation**: If Redis is unavailable (connection refused), the cache miss path runs inference and returns the result without caching. The service never crashes because Redis is down — it just becomes slower. This is Rule 23.
+> **TTLs**: Classification: 86,400s (24h). Detection: 3,600s (1h) — scenes change faster.
+>
+> **Model hash in key**: when model weights update, hash changes, old cache entries become unreachable automatically — no explicit flush needed.
+>
+> **Graceful degradation**: `socket_connect_timeout=1.0` — Redis unavailable fails in 1s (not 20-30s OS timeout), sets `_available=False`, all get/set are no-ops. API continues serving. Rule 23.
+
+**Q35a. Why asyncio.get_running_loop() and not get_event_loop() in FastAPI lifespan?**
+
+> FastAPI lifespan is an `async` function — the event loop is already running when it executes. `get_event_loop()` raises DeprecationWarning in Python 3.10 and RuntimeError in Python 3.12+.
+>
+> ```python
+> loop = asyncio.get_running_loop()   # correct
+> models, hashes = await loop.run_in_executor(None, lambda: load_all_models())
+> ```
+>
+> `run_in_executor` runs blocking `torch.load` + HF Hub download in a thread pool — event loop stays responsive so `/health` can return 503 during startup and handle SIGTERM for graceful shutdown.
+
+**Q35b. Why UploadFile = File(...) not Form(...) for image bytes in FastAPI?**
+
+> `Form()` is for text fields. Using `Form` for binary image data causes `422 Unprocessable Entity` on every request — no helpful error message.
+>
+> ```python
+> # CORRECT: UploadFile for binary, Form for text fields
+> async def classify(file: UploadFile = File(...), model_name: str = Form("resnet50")):
+>     image_bytes = await file.read()
+> ```
+>
+> Client: `files={"file": ("img.jpg", f, "image/jpeg")}, data={"model_name": "resnet50"}`.
 
 **Q36. What is your Docker memory limit and why?**
 
