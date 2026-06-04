@@ -137,7 +137,9 @@ MLFLOW_EXPERIMENT_YOLO = "smartvision_detection"
 
 # ── Drift detection ───────────────────────────────────────────────────────────
 KS_DRIFT_ALERT_THRESHOLD = 0.10
-KS_MIN_SAMPLES_FOR_TEST  = 100
+KS_MIN_LIVE_SAMPLES      = 100   # minimum live buffer size before KS test runs (baseline n=30)
+KS_RUN_EVERY_N           = 10    # run KS every N new samples per class — rate-limits hot path
+KS_MIN_SAMPLES_FOR_TEST  = KS_MIN_LIVE_SAMPLES   # backward-compat alias (Section 7 notebook imports this)
 
 # ── Streamlit input validation ────────────────────────────────────────────────
 MAX_IMAGE_SIZE_MB    = 10

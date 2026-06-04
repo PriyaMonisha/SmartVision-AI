@@ -1,0 +1,49 @@
+# filename: monitoring/prometheus_rules.yml
+# purpose:  Prometheus alerting rules for SmartVision AI.
+#
+# Section 11 Docker Compose wiring:
+#   prometheus service volumes:
+#     - ./monitoring/prometheus_rules.yml:/etc/prometheus/rules.yml
+#   prometheus.yml must include:
+#     rule_files:
+#       - /etc/prometheus/rules.yml
+#
+# Rule 33: label name class_name used consistently with drift_detector.py Gauges.
+
+groups:
+  - name: smartvision_drift
+    rules:
+      - alert: ConfidenceDriftDetected
+        # Double-gate: drift_detector.py sets ks_drift_alert=1 only when
+        # stat > 0.10 AND p < 0.05. The 5m duration prevents transient spikes
+        # from firing the alert.
+        expr: smartvision_ks_drift_alert{class_name!=""} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Confidence drift detected for class {{ $labels.class_name }}"
+          description: >
+            KS D-statistic exceeded 0.10 threshold with p < 0.05 for class
+            {{ $labels.class_name }} sustained for 5 consecutive minutes.
+            Investigate recent data distribution or model degradation.
+
+  - name: smartvision_latency
+    rules:
+      - alert: HighClassifyLatency
+        # classify_latency buckets include 1.0 — histogram_quantile at this
+        # boundary is precise (no interpolation across bucket edge needed).
+        expr: >
+          histogram_quantile(
+            0.95,
+            rate(smartvision_classify_latency_seconds_bucket[5m])
+          ) > 1.0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "SmartVision P95 classify latency exceeds 1.0s"
+          description: >
+            P95 classification latency is {{ $value | humanizeDuration }}
+            (threshold: 1.0s). Check model loading, CPU contention, or input
+            image preprocessing pipeline.

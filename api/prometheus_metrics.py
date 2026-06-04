@@ -30,6 +30,15 @@ detect_latency = Histogram(
     buckets=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0],
 )
 
+# Unknown-prediction counter — fires when model returns a class not in config.CLASSES.
+# High rate indicates corrupted weights or wrong input preprocessing pipeline.
+# Rule 33: label name model_name consistent with classify_requests label.
+unknown_predictions = Counter(
+    "smartvision_unknown_predictions_total",
+    "Predictions with class_name not in CLASSES — indicates model or preprocessing issue",
+    ["model_name"],
+)
+
 # Cache metrics — used by Section 9 to measure cache efficiency
 cache_hits = Counter(
     "smartvision_cache_hits_total",

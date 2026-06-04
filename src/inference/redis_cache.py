@@ -63,6 +63,40 @@ class RedisCache:
         except Exception as e:
             logger.warning(f"Redis set error (key={key[:20]}...): {e}")
 
+    def push_to_list(self, key: str, value: float, max_len: int) -> None:
+        """LPUSH + LTRIM in pipeline (single round-trip).
+
+        NOT atomic (no MULTI/EXEC). Safe for single-worker uvicorn deployments.
+        With multiple workers the list may transiently exceed max_len between
+        the two commands — the caller's in-process deque provides the safety net.
+        """
+        if not self._available:
+            return
+        try:
+            pipe = self._client.pipeline()
+            pipe.lpush(key, str(value))
+            pipe.ltrim(key, 0, max_len - 1)
+            pipe.execute()
+        except Exception as e:
+            logger.warning(f"Redis push_to_list error (key={key}): {e}")
+
+    def get_list(self, key: str) -> list[float]:
+        """LRANGE 0 -1 → decode bytes → list[float].
+
+        Returns [] on any error or missing key.
+        decode_responses=False: items are bytes, decoded before float().
+        Items are in LPUSH (newest-first) order — caller must reverse()
+        before extending a deque to preserve chronological insertion order.
+        """
+        if not self._available:
+            return []
+        try:
+            raw: list[bytes] = self._client.lrange(key, 0, -1)
+            return [float(v.decode("utf-8")) for v in raw]
+        except Exception as e:
+            logger.warning(f"Redis get_list error (key={key}): {e}")
+            return []
+
     @staticmethod
     def make_classify_key(image_bytes: bytes, model_name: str, model_hash: str = "") -> str:
         """32-char SHA256 prefix (128-bit) — negligible birthday collision probability."""

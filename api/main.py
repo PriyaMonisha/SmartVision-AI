@@ -17,7 +17,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 
 import config as cfg
-from api.routes import classify, detect, health, metrics
+from api.routes import classify, detect, drift, health, metrics
 from src.data.augmentor import get_eval_transforms
 from src.inference.model_loader import load_all_models
 from src.inference.redis_cache import RedisCache
@@ -58,6 +58,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Build eval transform once at startup — not per-request (avoids per-call allocation)
     app.state.eval_transform = get_eval_transforms(image_size=cfg.IMAGE_SIZE)
 
+    # Drift detector — initialized after Redis so redis_client is available for buffer restore
+    from src.monitoring.drift_detector import DriftDetector
+    try:
+        app.state.drift_detector = DriftDetector(
+            baseline_path=cfg.DRIFT_BASELINE_PATH,
+            redis_client=app.state.redis,
+            min_samples=cfg.KS_MIN_LIVE_SAMPLES,
+            alert_threshold=cfg.KS_DRIFT_ALERT_THRESHOLD,
+        )
+        logger.info("DriftDetector initialized: 22-class KS monitoring active")
+    except FileNotFoundError as e:
+        logger.error(f"DriftDetector init failed (baseline missing): {e}")
+        app.state.drift_detector = None
+
     yield
 
     # Shutdown cleanup
@@ -80,4 +94,5 @@ app = FastAPI(
 app.include_router(health.router)
 app.include_router(classify.router)
 app.include_router(detect.router)
+app.include_router(drift.router)
 app.include_router(metrics.router)

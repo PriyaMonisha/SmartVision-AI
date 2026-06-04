@@ -19,6 +19,7 @@ from api.prometheus_metrics import (
     cache_misses,
     classify_latency,
     classify_requests,
+    unknown_predictions,
 )
 from api.schemas import ClassifyPrediction, ClassifyResponse
 from src.inference.redis_cache import RedisCache
@@ -87,8 +88,19 @@ async def classify_image(
     top1 = predictions[0].class_name
     if top1 not in cfg.CLASSES:
         top1 = "unknown"
+        unknown_predictions.labels(model_name=model_name).inc()
+        logger.warning(
+            f"Unknown class prediction: {predictions[0].class_name!r} "
+            f"(model={model_name}, conf={predictions[0].confidence:.3f}). "
+            "Check model weights and input preprocessing."
+        )
     classify_requests.labels(class_name=top1, model_name=model_name).inc()
     classify_latency.observe(inference_ms / 1000)
+
+    # Drift recording — non-cached inference only (cache hits must not double-count)
+    drift_detector = getattr(request.app.state, "drift_detector", None)
+    if drift_detector is not None:
+        drift_detector.record(top1, predictions[0].confidence)
 
     result = ClassifyResponse(
         predictions=predictions,
