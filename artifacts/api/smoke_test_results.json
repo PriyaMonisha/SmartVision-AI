@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-06-04T22:29:51",
+  "classify": {
+    "skipped": true
+  },
+  "detect": {
+    "image": "image_003080.jpg",
+    "n_detections": 2,
+    "inference_time_ms": 3921.4,
+    "cache_hit_on_second_request": false
+  },
+  "metrics": {
+    "content_type": "text/plain; version=0.0.4; charset=utf-8",
+    "body_length_bytes": 3857
+  },
+  "health": {
+    "status": "ok",
+    "models_ready": true,
+    "models_loaded": [
+      "yolo"
+    ]
+  },
+  "status": "PASS"
+}
