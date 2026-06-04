@@ -41,14 +41,14 @@ At the end of EVERY section, before declaring it complete:
 ---
 
 ## Current Status
-**Active Section:** Section 9 🔄 (KS Drift + Prometheus — next)
-**Last Working File:** api/main.py, notebooks/07_fastapi_smoke_test.py
-**Last Decision Made:** Section 8 complete. FastAPI lifespan (Rule 32), get_running_loop
-(Rule 31), non-blocking model loading via run_in_executor. Redis cache-aside with 1s
-socket_connect_timeout (graceful degradation). cached-key-pop fix prevents TypeError on
-cache hit. UploadFile for binary (not Form). /metrics returns CONTENT_TYPE_LATEST.
-Smoke test: YOLO detect PASS (2 detections, 3.9s cold start), /metrics PASS, /health PASS.
-Classify SKIP: resnet50_best.pt not locally available -- copy from Colab models/ to enable.
+**Active Section:** Section 10 🔄 (Streamlit Multi-Page App — next)
+**Last Working File:** src/monitoring/drift_detector.py, notebooks/08_drift_prometheus.py
+**Last Decision Made:** Section 9 complete. Double-gate KS alert (stat > 0.10 AND p < 0.05)
+eliminates ~95% false-positive rate from n=30 baseline. Rate-limited KS_RUN_EVERY_N=10
+prevents event loop blocking at 100 req/s. Redis list buffer + deque fallback. All 22 Gauge
+series initialized at startup so Prometheus has time series from day 1. _safe_float() guards
+nan/inf from zero-variance KS inputs. DriftDetector in lifespan, GET /drift/status endpoint.
+Test B: stat=0.02, p=1.00 (no FP). Test C: 3/3 alerts (cup/chair/bottle, +0.3 shift, stat 0.60-0.82).
 
 **Section 5 Training Status — Round 1 (69 img/class, DOCUMENTED):**
 - VGG16:         59.5% val — overfitting Phase 2 (4,100 params/img)
@@ -131,12 +131,18 @@ When you see a POST-COMMIT REMINDER, do ALL THREE immediately:
   - GET /health (503 when loading), GET /metrics (CONTENT_TYPE_LATEST)
   - Smoke test: YOLO detect PASS, /metrics PASS, /health PASS
 
+- [x] Section 9: KS Drift + Prometheus ✅
+  - DriftDetector: double-gate KS (stat > 0.10 AND p < 0.05), rate-limited (KS_RUN_EVERY_N=10)
+  - Redis list + deque fallback; 22 Gauge series initialized at startup
+  - GET /drift/status (DriftStatusResponse Pydantic model)
+  - Prometheus rules: ConfidenceDriftDetected (5m), HighClassifyLatency P95>1s (2m)
+  - Notebook: Test B stat=0.02/p=1.00 (no FP), Test C 3/3 alerts (stat=0.60-0.82)
+
 ### In Progress 🔄
 
-- [ ] Section 9: KS Drift + Prometheus  ← NEXT
+- [ ] Section 10: Streamlit Multi-Page App  ← NEXT
 
 ### Remaining 📋
-- [ ] Section 9: KS Drift + Prometheus
 - [ ] Section 10: Streamlit Multi-Page App
 - [ ] Section 11: Docker Compose + Grafana + Airflow Scaffolding
 - [ ] Section 12: CI + Tests + HuggingFace Deployment

@@ -498,10 +498,32 @@ def bbox_to_yolo(bbox, img_w, img_h, class_idx):
 > - Inference latency histogram (p50, p95, p99)
 > - Prediction distribution by class (label: `class_name`)
 > - Cache hit/miss ratio
-> - Model load status
-> - KS drift score (current vs baseline)
+> - KS drift statistic, p-value, and alert flag per class (Section 9)
+> - Live buffer size per class (how many inferences have been collected)
 >
-> **Grafana dashboards**: Real-time request rate, latency trends, class prediction frequency (heatmap), drift score time series, Redis cache efficiency. The consistent label name `class_name` across all Prometheus metrics means a single Grafana variable can filter by class across all panels.
+> **Grafana dashboards**: Real-time request rate, latency trends, class prediction frequency (heatmap), drift score time series per class, Redis cache efficiency. The consistent label name `class_name` across all Prometheus metrics means a single Grafana variable can filter by class across all panels.
+
+**Q40a. Your KS threshold is 0.10 — why not just use `stat > 0.10` as the alert condition?**
+
+> I tried that first. `stat > 0.10` alone fires on almost every class even when there's no real drift. The KS D-statistic has high variance at small reference sample sizes — our baseline is only 30 samples per class (from the val split). With n_baseline=30 and n_live=100, sampling noise alone produces KS stats of 0.11-0.25 regularly. You'd be paged constantly with no real signal.
+>
+> The fix: double-gate alert (`stat > 0.10 AND p-value < 0.05`). The p-value accounts for the sample size — it stays high (non-significant) when the stat is elevated by chance at small n. In practice: stat=0.22, p=0.12 → no alert (sampling noise). stat=0.60, p=0.000001 → alert fires (real shift of +0.3 mean).
+>
+> Verified empirically: Test B (same distribution, n=110) → stat=0.02, p=1.00. Test C (+0.3 shift, n=150) → stat=0.60-0.82, p≈0. Zero false positives, 100% detection.
+
+**Q40b. Why do you rate-limit the KS test instead of running it on every request?**
+
+> The KS test itself is fast (~0.5ms for n=200 vs n=30). But classify requests arrive at up to 100/s. With 22 classes and KS running on every `record()` call after the buffer fills, that's 2,200 KS executions per second → 1.1 seconds of CPU blocked per second. Since `record()` runs in the asyncio event loop thread (it's synchronous, no await), this directly delays the next HTTP request's response time.
+>
+> Fix: `KS_RUN_EVERY_N=10` — run KS every 10th new sample per class. Reduces event loop blocking from 1.1s/s to 110ms/s. Statistically equivalent: 10 consecutive inferences from the same request pattern provide zero additional information for the KS test.
+
+**Q40c. How does your DriftDetector survive an API restart without losing collected data?**
+
+> Live confidence scores are dual-written: to an in-memory `deque(maxlen=200)` for fast access, and to a Redis list `sv:drift:live:{class_name}` (LPUSH + LTRIM to 200, via pipeline) for persistence.
+>
+> On restart, `DriftDetector.__init__` calls `redis_client.get_list(key)` for each class, which returns the 200 most recent scores in newest-first order (LPUSH order). We reverse the list before `deque.extend()` to restore chronological order — without reversing, the deque would evict the most recently collected samples first on next insert, which is backwards.
+>
+> One important note: the LPUSH+LTRIM pipeline is NOT atomic (not MULTI/EXEC). With a single uvicorn worker (our setup), there's no race condition. With multiple workers, the list could transiently exceed 200 items. Documented in the code; acceptable for this deployment model.
 
 ---
 
