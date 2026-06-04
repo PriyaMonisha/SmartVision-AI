@@ -1,0 +1,156 @@
+{
+  "model": "yolov8n",
+  "num_classes": 22,
+  "epochs_trained": 50,
+  "imgsz": 640,
+  "fast_mode": false,
+  "train_images": 3080,
+  "val_images": 660,
+  "map50": 0.147319,
+  "map50_95": 0.05755,
+  "precision": 0.549415,
+  "recall": 0.184222,
+  "conf_threshold": 0.5,
+  "iou_threshold": 0.45,
+  "per_class": {
+    "person": {
+      "ap50": 0.151517,
+      "map5095": 0.059792,
+      "precision": 0.611855,
+      "recall": 0.201131
+    },
+    "bicycle": {
+      "ap50": 0.04326,
+      "map5095": 0.010325,
+      "precision": 0.434783,
+      "recall": 0.08547
+    },
+    "car": {
+      "ap50": 0.06811,
+      "map5095": 0.022606,
+      "precision": 0.577778,
+      "recall": 0.10297
+    },
+    "motorcycle": {
+      "ap50": 0.220261,
+      "map5095": 0.073256,
+      "precision": 0.769231,
+      "recall": 0.232558
+    },
+    "airplane": {
+      "ap50": 0.340224,
+      "map5095": 0.153407,
+      "precision": 0.75,
+      "recall": 0.364865
+    },
+    "bus": {
+      "ap50": 0.308928,
+      "map5095": 0.130587,
+      "precision": 0.613636,
+      "recall": 0.3375
+    },
+    "truck": {
+      "ap50": 0.056869,
+      "map5095": 0.020514,
+      "precision": 0.428571,
+      "recall": 0.092308
+    },
+    "traffic light": {
+      "ap50": 0.09966,
+      "map5095": 0.041872,
+      "precision": 0.647059,
+      "recall": 0.111111
+    },
+    "bench": {
+      "ap50": 0.048569,
+      "map5095": 0.019874,
+      "precision": 0.4375,
+      "recall": 0.076923
+    },
+    "bird": {
+      "ap50": 0.065444,
+      "map5095": 0.0183,
+      "precision": 0.461538,
+      "recall": 0.106195
+    },
+    "cat": {
+      "ap50": 0.495561,
+      "map5095": 0.249071,
+      "precision": 0.848485,
+      "recall": 0.518519
+    },
+    "dog": {
+      "ap50": 0.061173,
+      "map5095": 0.017969,
+      "precision": 0.375,
+      "recall": 0.111111
+    },
+    "horse": {
+      "ap50": 0.138199,
+      "map5095": 0.033983,
+      "precision": 0.580645,
+      "recall": 0.202247
+    },
+    "bottle": {
+      "ap50": 0.0387,
+      "map5095": 0.018603,
+      "precision": 0.428571,
+      "recall": 0.075314
+    },
+    "cup": {
+      "ap50": 0.05743,
+      "map5095": 0.032585,
+      "precision": 0.428571,
+      "recall": 0.081522
+    },
+    "bowl": {
+      "ap50": 0.037129,
+      "map5095": 0.015372,
+      "precision": 0.266667,
+      "recall": 0.083333
+    },
+    "pizza": {
+      "ap50": 0.341854,
+      "map5095": 0.15453,
+      "precision": 0.8125,
+      "recall": 0.371429
+    },
+    "cake": {
+      "ap50": 0.076379,
+      "map5095": 0.012912,
+      "precision": 0.419355,
+      "recall": 0.12037
+    },
+    "chair": {
+      "ap50": 0.070844,
+      "map5095": 0.026329,
+      "precision": 0.455882,
+      "recall": 0.100977
+    },
+    "couch": {
+      "ap50": 0.129775,
+      "map5095": 0.027106,
+      "precision": 0.451613,
+      "recall": 0.181818
+    },
+    "potted plant": {
+      "ap50": 0.066562,
+      "map5095": 0.021823,
+      "precision": 0.454545,
+      "recall": 0.131579
+    },
+    "bed": {
+      "ap50": 0.324565,
+      "map5095": 0.105278,
+      "precision": 0.833333,
+      "recall": 0.363636
+    }
+  },
+  "annotation_validation": {
+    "train_files": 3080,
+    "train_objects": 22664,
+    "val_files": 660,
+    "val_objects": 4550,
+    "classes_found": 22
+  }
+}

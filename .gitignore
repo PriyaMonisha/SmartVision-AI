@@ -6,6 +6,8 @@
 # ── Model weights (stored on HuggingFace Hub) ────────────────────────────────
 /models/*.pt
 /models/*.pth
+artifacts/**/*.pt
+artifacts/**/*.pth
 
 # ── YOLO training output ─────────────────────────────────────────────────────
 /runs/
