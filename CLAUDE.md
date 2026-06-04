@@ -41,12 +41,13 @@ At the end of EVERY section, before declaring it complete:
 ---
 
 ## Current Status
-**Active Section:** Section 6 🔄 (YOLOv8 Detection — next)
-**Last Working File:** notebooks/04_train_classifier.py, src/data/loader.py, src/data/dataset.py
-**Last Decision Made:** Section 5 complete. All 4 CNNs trained. ResNet50 best at 65.5% test.
-Root cause of ceiling: data volume (1464 params/img → overfitting Phase 2). Re-collection
-ready (quality gates raised to 80px, chair person-overlap filter added) but deferred until
-after Section 6-7 to maintain capstone progress.
+**Active Section:** Section 8 🔄 (FastAPI + Redis — next)
+**Last Working File:** notebooks/06_model_comparison.py
+**Last Decision Made:** Section 7 complete. CPU benchmarks (vgg16=229ms, mobilenet=39ms,
+efficientnet=51ms, resnet50=115ms, yolov8n=154ms NMS). MLflow: 5 runs logged to SQLite
+(2 experiments). Drift baseline: MobileNet val-split, 30/class, 22 .npy score files.
+Champion: resnet50 65.5%. Val split used (not train — train confidence is inflated).
+model_factory.py updated: pretrained=False param for topology-correct CPU benchmarking.
 
 **Section 5 Training Status — Round 1 (69 img/class, DOCUMENTED):**
 - VGG16:         59.5% val — overfitting Phase 2 (4,100 params/img)
@@ -113,14 +114,20 @@ When you see a POST-COMMIT REMINDER, do ALL THREE immediately:
 ### Completed ✅ (continued)
 - [x] Section 5: CNN Training (Colab T4) — ALL 4 CNNs trained
   - VGG16: 59.5% | MobileNetV2: 56.7% | EfficientNetB0: 58.9% | ResNet50: **65.5%** ← best
+- [x] Section 6: YOLOv8n Detection (Colab T4) — mAP50=14.7%, mAP50-95=5.75%, 50 epochs
+  - Best classes: cat 50.1%, pizza 34.0%, bed 32.5% | Weights: HF upload pending
+
+- [x] Section 7: Model Comparison + MLflow + Drift Baseline ✅
+  - CPU benchmarks: vgg16=229ms, mobilenet=39ms, efficientnet=51ms, resnet50=115ms, yolov8n=154ms(NMS)
+  - MLflow: 2 experiments, 5 runs, SQLite WAL mode, VGG16 tagged metrics_complete=False
+  - Drift baseline: MobileNet, val split (30/class), 22 .npy score files, correct+incorrect distributions
+  - model_factory.py: pretrained=False param for topology-correct benchmarking
 
 ### In Progress 🔄
 
-- [ ] Section 6: YOLOv8 Detection  ← NEXT
+- [ ] Section 8: FastAPI + Redis  ← NEXT
 
 ### Remaining 📋
-- [ ] Section 6: YOLOv8 Detection
-- [ ] Section 7: Model Comparison + MLflow + Drift Baseline
 - [ ] Section 8: FastAPI + Redis
 - [ ] Section 9: KS Drift + Prometheus
 - [ ] Section 10: Streamlit Multi-Page App

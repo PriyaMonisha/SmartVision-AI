@@ -209,6 +209,32 @@ def bbox_to_yolo(bbox, img_w, img_h, class_idx):
 
 > `model.train(exist_ok=True)` tells YOLOv8 not to crash if the output directory already exists. Without it, YOLO raises an error if you re-run training (the directory from the previous run is still there). With `exist_ok=True`, it overwrites cleanly. This is Rule 8 in our project — mandatory to avoid brittle training runs.
 
+**Q22a. Your YOLOv8n achieved mAP50=14.7%. Is that good or bad? What's the root cause of the ceiling?**
+
+> In absolute terms, 14.7% is modest — but it's the expected result given the data size, and it's the honest answer.
+>
+> **Context**: YOLOv8n on the full COCO dataset (118,287 training images, 80 classes) achieves 52.3% mAP50. We trained on 3,080 images across 22 classes (~140 images/class). That's 9.5% of COCO's training volume per class. The mAP50 we got (14.7%) is proportional to the data deficit.
+>
+> **Root cause**: Detection is harder than classification — the model must learn both "what is this?" AND "where is it and how large is it?". This requires more training examples per class than classification. 140 img/class is enough for classification (we got 65.5% with ResNet50) but insufficient for detection.
+>
+> **Per-class evidence**: Classes with clean, visually distinctive objects scored highest — cat (50.1%), pizza (34.0%), bed (32.5%), airplane (34.0%). Classes with cluttered scenes or ambiguous sizes scored near zero — bicycle (4.8%), bottle (3.9%), traffic light (0%). This pattern is consistent with data-limited detection: the model learned only the most distinctive objects.
+>
+> **What would improve it**: 300–400 images/class would likely push mAP50 to 30–40%. The architecture (YOLOv8n, 3M params) is not the bottleneck — data volume is.
+
+**Q22b. Why did you validate annotations before training? What did you find?**
+
+> Annotation validation runs before training to fail fast on corrupt data rather than waste 90 minutes of GPU time before discovering errors in epoch 50.
+>
+> Our validator checks every `.txt` label file for: (1) class ID in valid range [0, 21], (2) bounding box coordinates in [0, 1], (3) non-zero box dimensions. We found 10,432 "errors" — all of the form `xc=1.0` or `yc=1.0` (centre coordinates at the image edge).
+>
+> **Root cause**: COCO has objects that extend to or past the image boundary. When converting from COCO format (`x, y, w, h` absolute pixels) to YOLO format (normalized centre coordinates), clamping clips these to exactly 1.0. This is valid YOLO format — YOLO clips coordinates during training anyway. Our initial validator used strict `< 1.0`; the fix was `<= 1.0` (closed interval). The annotations were correct all along.
+>
+> **Why this matters in interviews**: I validated BEFORE training, found a false positive in my own validator, diagnosed the root cause (COCO border objects), and fixed the validator logic — not the data. This is the correct debugging approach.
+
+**Q22c. Why YOLOv8n (nano) and not YOLOv8s/m/l?**
+
+> Three reasons: (1) **Data size** — with 140 img/class, larger models would overfit worse than the nano variant. More capacity means more overfitting on sparse data. (2) **Training time** — YOLOv8n (3M params) trains 50 epochs in 97 minutes on T4. YOLOv8m (25M params) would take ~4× longer with no benefit given our data ceiling. (3) **Deployment** — the full serving stack loads 4 CNN classifiers + YOLOv8 simultaneously. YOLOv8n is only 6MB vs 49MB for YOLOv8m, fitting easily within our ~1.5GB Docker memory budget.
+
 ---
 
 ## Section 5 — Model Training & Optimization Questions
@@ -318,19 +344,31 @@ def bbox_to_yolo(bbox, img_w, img_h, class_idx):
 
 **Q28. What is MLflow? What did you use it for?**
 
-> MLflow is an open-source platform for managing the ML lifecycle. In SmartVision AI, I used experiment tracking: every training run for all 4 classifiers logs to the `smartvision_classification` experiment in a local SQLite database (`mlruns/mlflow.db`).
+> MLflow is an open-source platform for managing the ML lifecycle. In SmartVision AI, I used it for experiment tracking in Section 7: every training run for all 4 CNNs and YOLOv8n is logged to two experiments — `smartvision_classification` (4 runs) and `smartvision_detection` (1 run) — in a local SQLite database with WAL mode enabled.
 >
-> **Per run, logged:**
-> - Params: model name, epochs, batch_size, lr, fast_mode, image_size, num_classes
-> - Extra params for 2-phase models: phase1_epochs, phase2_epochs
-> - Metrics: best_val_acc
-> - Run name: `{model}_{fast|full}` (e.g., `vgg16_full`)
+> **Per CNN run, logged:**
+> - Params: model name, epochs, dataset_round, fast_mode, num_classes
+> - Metrics: test_accuracy, test_precision, test_recall, test_f1, val_accuracy, model_size_mb, cpu_inference_ms
+> - Tags: weights_available, metrics_complete (False for VGG16 — its precision/recall/F1 were not measured)
+> - Artifacts: confusion_matrix.png, training_history.png, metrics.json (if available)
 >
-> This gives a complete audit trail — I can compare all 4 models in MLflow UI, reproduce any run from its logged parameters, and identify which configuration gave the best validation accuracy.
+> **Design decision:** VGG16's precision/recall/F1 are null — they were not measured during training and cannot be reliably derived from accuracy on a 22-class unbalanced problem. Rather than fabricate values, I set them to null and tagged the run `metrics_complete=False`. MLflow filters `if v is not None` before logging, so the VGG16 run has only accuracy and size metrics. This is cleaner than logging fabricated numbers that would corrupt any downstream champion-challenger comparison.
+
+**Q28a. How did you handle MLflow concurrency — can you view results while the notebook is still running?**
+
+> SQLite in default journal mode takes an exclusive write lock, so `mlflow ui` (which reads the DB) would block while the logging loop is writing. I enabled WAL (Write-Ahead Log) mode with an explicit `PRAGMA journal_mode=WAL; COMMIT;` before MLflow opens the file. WAL allows concurrent reads and writes: the UI can query while the notebook is logging new runs without either blocking. I also used an absolute path for the SQLite URI to avoid CWD-relative resolution issues (`(PROJECT_ROOT / "mlruns" / "mlflow.db").resolve()`).
+
+**Q28b. How do you make MLflow logging resilient to partial failures?**
+
+> Three patterns: (1) `try/except` per model run — if EfficientNet's logging crashes (missing artifact, SQLite lock), VGG16 and MobileNet runs are already committed. (2) `run_ids.json` is written incrementally after every run — if the process is killed after MobileNet's run, its run ID is already on disk. (3) `log_artifact_if_exists()` helper — missing PNG files become tags (`missing_confusion_matrix=path`) instead of exceptions. The loop completes all models regardless of which artifacts are absent.
 
 **Q29. Why SQLite backend for MLflow instead of the default file store?**
 
-> MLflow's default file store writes one JSON file per metric/parameter per run. With 4 models × multiple epochs × multiple metrics, that's hundreds of tiny files — `mlflow.search_runs()` has to scan a directory tree to answer queries, which is slow. SQLite stores everything in one `.db` file and supports proper SQL queries. `mlflow.search_runs()` is significantly faster. It also avoids Windows path issues with the default store. Trade-off: SQLite is single-writer (fine for one developer on one machine — a team would use PostgreSQL or MySQL).
+> MLflow's default file store writes one JSON file per metric/parameter per run. With 4 models × multiple epochs × multiple metrics, that's hundreds of tiny files — `mlflow.search_runs()` has to scan a directory tree to answer queries, which is slow. SQLite stores everything in one `.db` file and supports proper SQL queries. `mlflow.search_runs()` is significantly faster. It also avoids Windows path issues with the default store. Trade-off: SQLite is single-writer per transaction (mitigated with WAL mode for concurrent reads). A team would use PostgreSQL or MySQL.
+
+**Q29a. Why use `experiment_id` instead of `experiment_name` when searching MLflow runs?**
+
+> `mlflow.search_runs(experiment_ids=[...])` is the safe API. `experiment_names=` was added later and in some versions silently returns an empty DataFrame if the name contains special characters or was renamed. Experiment IDs are stable integers assigned at creation — they never change. I retrieve the ID with `mlflow.set_experiment().experiment_id` immediately after creating/finding the experiment, then use that ID for all subsequent calls. This is especially important in automated pipelines where a silent empty search result looks like "no runs found" instead of an error.
 
 **Q30. Why is there an 80% accuracy threshold before uploading to HuggingFace Hub?**
 
@@ -402,7 +440,21 @@ def bbox_to_yolo(bbox, img_w, img_h, class_idx):
 
 > Model drift is when the real-world data distribution shifts away from what the model was trained on, causing accuracy to degrade silently without any errors being thrown. There are two types: (1) **Data drift** — input images change (e.g., new camera angle, new lighting conditions). (2) **Concept drift** — the relationship between inputs and correct labels changes.
 >
-> We detect **confidence score drift** using the Kolmogorov-Smirnov (KS) test. We save a baseline distribution of confidence scores from the training evaluation set. At serving time, we accumulate confidence scores from real requests and periodically compare them to the baseline using KS. If the distribution has shifted significantly, we flag a drift alert.
+> We detect **confidence score drift** using the Kolmogorov-Smirnov (KS) test. We save a baseline distribution of confidence scores from the validation set (held-out, not seen during training). At serving time, we accumulate confidence scores from real requests and periodically compare them to the baseline using KS. If the distribution has shifted significantly, we flag a drift alert.
+
+**Q37a. Why use the validation split for the drift baseline — not the training split?**
+
+> The model was trained on training images — it has seen those images during gradient updates and will produce systematically inflated confidence scores on them (memorization effect). A baseline built from training-split confidence reflects the model's "familiar territory" distribution, not the distribution it would see in deployment.
+>
+> If the baseline uses training confidence (higher mean, tighter distribution) and live traffic confidence is lower (as expected for novel images), the KS test will flag this gap as drift — even when the model is behaving normally. This is a permanent source of false positive alerts from the first day of deployment.
+>
+> The validation split is held-out: the model never saw these images during training. Its confidence on val images represents what you'd expect on new deployment traffic. Val split was 30 images/class = 660 total — sufficient for a two-sample KS test (which has power at n=30).
+
+**Q37b. You mentioned your baseline model (MobileNet, 56.7%) is overconfident on errors. How did you handle that?**
+
+> Max-softmax from a model with below-70% accuracy frequently produces high-confidence wrong predictions — the model's uncertainty is not well-calibrated. A single pooled confidence distribution mixes high-confidence-correct and high-confidence-incorrect samples, obscuring what's actually happening.
+>
+> I added accuracy-conditional distributions to the baseline: for each class, I record `mean_correct` (average confidence when the model predicts correctly) and `mean_incorrect` (when it predicts wrongly), alongside the raw mean. Section 9's drift detector can then flag: "live confidence is falling below `mean_correct` for class airplane" — which is a more specific and actionable signal than "the aggregate distribution shifted." This also documents the known limitation of using a 56.7% model for the baseline, with a note to recompute after Section 12 uploads ResNet50 (65.5%) to HuggingFace Hub.
 
 **Q38. Why KS test on confidence scores, not on raw image embeddings?**
 
