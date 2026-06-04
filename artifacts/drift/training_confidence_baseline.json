@@ -1,0 +1,235 @@
+{
+  "schema_version": "1.0",
+  "model_used": "mobilenet",
+  "model_accuracy": 0.5667,
+  "split_used": "val",
+  "random_state": 42,
+  "eval_transform": "get_eval_transforms from src/data/augmentor.py (ToImage+ToDtype+Resize224)",
+  "note": "MobileNet used (only model with local weights). Val split: held-out, not seen during training, representative of deployment. Update with ResNet50 (champion, 65.5%) after HF model upload in Section 12. Known limitation: max-softmax from a 56.7% model is overconfident on errors. Accuracy-conditional distributions (mean_correct, mean_incorrect) provided to mitigate this for Section 9 KS test.",
+  "scores_base_dir": "artifacts/drift/baseline_scores",
+  "scores_file_note": "scores_file is relative to this JSON file's directory (artifacts/drift/). scores_base_dir is relative to PROJECT_ROOT for programmatic access.",
+  "ks_min_samples": 100,
+  "n_samples_per_class": 30,
+  "classes": {
+    "person": {
+      "mean": 0.41977,
+      "std": 0.179885,
+      "n_samples": 30,
+      "mean_correct": 0.441592,
+      "n_correct": 17,
+      "mean_incorrect": 0.391233,
+      "n_incorrect": 13,
+      "scores_file": "baseline_scores/scores_person.npy"
+    },
+    "bicycle": {
+      "mean": 0.552749,
+      "std": 0.236689,
+      "n_samples": 30,
+      "mean_correct": 0.624396,
+      "n_correct": 22,
+      "mean_incorrect": 0.355719,
+      "n_incorrect": 8,
+      "scores_file": "baseline_scores/scores_bicycle.npy"
+    },
+    "car": {
+      "mean": 0.327003,
+      "std": 0.166132,
+      "n_samples": 30,
+      "mean_correct": 0.323023,
+      "n_correct": 9,
+      "mean_incorrect": 0.328709,
+      "n_incorrect": 21,
+      "scores_file": "baseline_scores/scores_car.npy"
+    },
+    "motorcycle": {
+      "mean": 0.769928,
+      "std": 0.21425,
+      "n_samples": 30,
+      "mean_correct": 0.781725,
+      "n_correct": 28,
+      "mean_incorrect": 0.604762,
+      "n_incorrect": 2,
+      "scores_file": "baseline_scores/scores_motorcycle.npy"
+    },
+    "airplane": {
+      "mean": 0.769409,
+      "std": 0.229575,
+      "n_samples": 30,
+      "mean_correct": 0.81152,
+      "n_correct": 27,
+      "mean_incorrect": 0.390408,
+      "n_incorrect": 3,
+      "scores_file": "baseline_scores/scores_airplane.npy"
+    },
+    "bus": {
+      "mean": 0.630716,
+      "std": 0.285643,
+      "n_samples": 30,
+      "mean_correct": 0.755345,
+      "n_correct": 22,
+      "mean_incorrect": 0.287988,
+      "n_incorrect": 8,
+      "scores_file": "baseline_scores/scores_bus.npy"
+    },
+    "truck": {
+      "mean": 0.438033,
+      "std": 0.192006,
+      "n_samples": 30,
+      "mean_correct": 0.474124,
+      "n_correct": 17,
+      "mean_incorrect": 0.390836,
+      "n_incorrect": 13,
+      "scores_file": "baseline_scores/scores_truck.npy"
+    },
+    "traffic light": {
+      "mean": 0.421694,
+      "std": 0.25104,
+      "n_samples": 30,
+      "mean_correct": 0.568725,
+      "n_correct": 16,
+      "mean_incorrect": 0.253658,
+      "n_incorrect": 14,
+      "scores_file": "baseline_scores/scores_traffic_light.npy"
+    },
+    "bench": {
+      "mean": 0.323579,
+      "std": 0.146141,
+      "n_samples": 30,
+      "mean_correct": 0.353774,
+      "n_correct": 12,
+      "mean_incorrect": 0.303449,
+      "n_incorrect": 18,
+      "scores_file": "baseline_scores/scores_bench.npy"
+    },
+    "bird": {
+      "mean": 0.639078,
+      "std": 0.288295,
+      "n_samples": 30,
+      "mean_correct": 0.764499,
+      "n_correct": 21,
+      "mean_incorrect": 0.34643,
+      "n_incorrect": 9,
+      "scores_file": "baseline_scores/scores_bird.npy"
+    },
+    "cat": {
+      "mean": 0.674926,
+      "std": 0.224414,
+      "n_samples": 30,
+      "mean_correct": 0.729142,
+      "n_correct": 26,
+      "mean_incorrect": 0.322524,
+      "n_incorrect": 4,
+      "scores_file": "baseline_scores/scores_cat.npy"
+    },
+    "dog": {
+      "mean": 0.695617,
+      "std": 0.226135,
+      "n_samples": 30,
+      "mean_correct": 0.762272,
+      "n_correct": 24,
+      "mean_incorrect": 0.428999,
+      "n_incorrect": 6,
+      "scores_file": "baseline_scores/scores_dog.npy"
+    },
+    "horse": {
+      "mean": 0.669351,
+      "std": 0.206581,
+      "n_samples": 30,
+      "mean_correct": 0.697554,
+      "n_correct": 24,
+      "mean_incorrect": 0.556538,
+      "n_incorrect": 6,
+      "scores_file": "baseline_scores/scores_horse.npy"
+    },
+    "bottle": {
+      "mean": 0.327811,
+      "std": 0.114744,
+      "n_samples": 30,
+      "mean_correct": 0.362537,
+      "n_correct": 8,
+      "mean_incorrect": 0.315184,
+      "n_incorrect": 22,
+      "scores_file": "baseline_scores/scores_bottle.npy"
+    },
+    "cup": {
+      "mean": 0.405718,
+      "std": 0.205145,
+      "n_samples": 30,
+      "mean_correct": 0.453001,
+      "n_correct": 15,
+      "mean_incorrect": 0.358435,
+      "n_incorrect": 15,
+      "scores_file": "baseline_scores/scores_cup.npy"
+    },
+    "bowl": {
+      "mean": 0.415082,
+      "std": 0.197588,
+      "n_samples": 30,
+      "mean_correct": 0.513977,
+      "n_correct": 13,
+      "mean_incorrect": 0.339457,
+      "n_incorrect": 17,
+      "scores_file": "baseline_scores/scores_bowl.npy"
+    },
+    "pizza": {
+      "mean": 0.739496,
+      "std": 0.266627,
+      "n_samples": 30,
+      "mean_correct": 0.802546,
+      "n_correct": 26,
+      "mean_incorrect": 0.329665,
+      "n_incorrect": 4,
+      "scores_file": "baseline_scores/scores_pizza.npy"
+    },
+    "cake": {
+      "mean": 0.483401,
+      "std": 0.20824,
+      "n_samples": 30,
+      "mean_correct": 0.54796,
+      "n_correct": 22,
+      "mean_incorrect": 0.305864,
+      "n_incorrect": 8,
+      "scores_file": "baseline_scores/scores_cake.npy"
+    },
+    "chair": {
+      "mean": 0.359893,
+      "std": 0.146139,
+      "n_samples": 30,
+      "mean_correct": 0.416941,
+      "n_correct": 13,
+      "mean_incorrect": 0.316267,
+      "n_incorrect": 17,
+      "scores_file": "baseline_scores/scores_chair.npy"
+    },
+    "couch": {
+      "mean": 0.404169,
+      "std": 0.18978,
+      "n_samples": 30,
+      "mean_correct": 0.47333,
+      "n_correct": 15,
+      "mean_incorrect": 0.335009,
+      "n_incorrect": 15,
+      "scores_file": "baseline_scores/scores_couch.npy"
+    },
+    "potted plant": {
+      "mean": 0.450073,
+      "std": 0.26255,
+      "n_samples": 30,
+      "mean_correct": 0.576942,
+      "n_correct": 18,
+      "mean_incorrect": 0.25977,
+      "n_incorrect": 12,
+      "scores_file": "baseline_scores/scores_potted_plant.npy"
+    },
+    "bed": {
+      "mean": 0.475334,
+      "std": 0.198019,
+      "n_samples": 30,
+      "mean_correct": 0.502051,
+      "n_correct": 16,
+      "mean_incorrect": 0.444801,
+      "n_incorrect": 14,
+      "scores_file": "baseline_scores/scores_bed.npy"
+    }
+  }
+}

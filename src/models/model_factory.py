@@ -54,6 +54,7 @@ _TRAIN_SIZE: int = 3080
 def get_model(
     model_name: str,
     num_classes: int,
+    pretrained: bool = True,
     dropout: float | None = None,
 ) -> nn.Module:
     """
@@ -64,6 +65,9 @@ def get_model(
     Args:
         model_name:  "mobilenet" | "efficientnet" | "resnet50" | "vgg16"
         num_classes: Output classes (22 for SmartVision).
+        pretrained:  True (default) = load ImageNet weights.
+                     False = random init, no download. Use for CPU latency
+                     benchmarking where weight values do not affect timing.
         dropout:     Override default. None = model-specific default:
                        mobilenet=0.4, efficientnet=0.3, resnet50=0.3, vgg16=0.5
 
@@ -87,7 +91,7 @@ def get_model(
         raise ValueError(
             f"Unknown model: {model_name!r}. Valid: {sorted(_builders.keys())}"
         )
-    kwargs: dict = {"num_classes": num_classes}
+    kwargs: dict = {"num_classes": num_classes, "pretrained": pretrained}
     if dropout is not None:
         kwargs["dropout"] = dropout
     return _builders[model_name](**kwargs)
@@ -199,14 +203,16 @@ def get_per_class_accuracy(
     ))
 
 
-def _build_mobilenet_v2(num_classes: int, dropout: float = 0.4) -> nn.Module:
+def _build_mobilenet_v2(num_classes: int, dropout: float = 0.4, pretrained: bool = True) -> nn.Module:
     """
     MobileNetV2: all features frozen, new classifier head.
     dropout=0.4 (Round 3, up from pretrained default 0.2).
     Full Sequential replacement -- classifier[1]-only replacement silently
     kept Dropout(0.2) from the pretrained classifier[0].
+    pretrained=False: random init, no weight download (for CPU benchmarking).
     """
-    model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
+    weights = models.MobileNet_V2_Weights.IMAGENET1K_V1 if pretrained else None
+    model = models.mobilenet_v2(weights=weights)
     for param in model.features.parameters():
         param.requires_grad = False
     in_features = model.classifier[1].in_features   # read BEFORE replacement
@@ -218,13 +224,15 @@ def _build_mobilenet_v2(num_classes: int, dropout: float = 0.4) -> nn.Module:
     return model
 
 
-def _build_efficientnet_b0(num_classes: int, dropout: float = 0.3) -> nn.Module:
+def _build_efficientnet_b0(num_classes: int, dropout: float = 0.3, pretrained: bool = True) -> nn.Module:
     """
     EfficientNetB0: features frozen, new classifier head. Head-only training.
     dropout NOT raised: no Phase 2 unfreeze, structurally lower overfit risk.
     Historical: lr=0.0001 caused non-convergence (RCA-2). Use lr=0.001.
+    pretrained=False: random init, no weight download (for CPU benchmarking).
     """
-    model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+    weights = models.EfficientNet_B0_Weights.IMAGENET1K_V1 if pretrained else None
+    model = models.efficientnet_b0(weights=weights)
     for param in model.features.parameters():
         param.requires_grad = False
     in_features = model.classifier[1].in_features
@@ -236,14 +244,16 @@ def _build_efficientnet_b0(num_classes: int, dropout: float = 0.3) -> nn.Module:
     return model
 
 
-def _build_resnet50(num_classes: int, dropout: float = 0.3) -> nn.Module:
+def _build_resnet50(num_classes: int, dropout: float = 0.3, pretrained: bool = True) -> nn.Module:
     """
     ResNet50: ALL params frozen, then new fc head (Phase 1 ready).
     Round 3 correction: freeze ALL (incl. original fc), then replace fc.
     New fc.* layers created fresh with requires_grad=True by default.
     Unambiguous: after construction, only fc.0.* and fc.1.* are trainable.
+    pretrained=False: random init, no weight download (for CPU benchmarking).
     """
-    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+    weights = models.ResNet50_Weights.IMAGENET1K_V2 if pretrained else None
+    model = models.resnet50(weights=weights)
     for param in model.parameters():                 # freeze ALL
         param.requires_grad = False
     in_features = model.fc.in_features              # 2048
@@ -255,12 +265,14 @@ def _build_resnet50(num_classes: int, dropout: float = 0.3) -> nn.Module:
     return model
 
 
-def _build_vgg16(num_classes: int, dropout: float = 0.5) -> nn.Module:
+def _build_vgg16(num_classes: int, dropout: float = 0.5, pretrained: bool = True) -> nn.Module:
     """
     VGG16: SKIPPED (59.5% ceiling). Included so get_model("vgg16") doesn't crash.
     VGG16 has no BatchNorm -> freeze_bn=False at all train() call sites.
+    pretrained=False: random init, no weight download (for CPU benchmarking).
     """
-    model = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
+    weights = models.VGG16_Weights.IMAGENET1K_V1 if pretrained else None
+    model = models.vgg16(weights=weights)
     for param in model.features.parameters():
         param.requires_grad = False
     in_features = model.classifier[6].in_features

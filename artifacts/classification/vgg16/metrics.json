@@ -1,0 +1,16 @@
+{
+  "model": "vgg16",
+  "dataset_round": 1,
+  "dataset_note": "Round 1 (100 img/class, 69 train/class). Other models used Round 2 (200 img/class, 140 train/class).",
+  "test_accuracy": 0.595,
+  "test_precision": null,
+  "test_recall": null,
+  "test_f1": null,
+  "val_accuracy": null,
+  "inference_ms": null,
+  "model_size_mb": 527.8,
+  "epochs_trained": 20,
+  "fast_mode": false,
+  "weights_available": false,
+  "training_note": "VGG16 Round 1: 59.5% test accuracy, 4100 params/img overfitting. Weights not saved (Colab training). precision/recall/F1/val_accuracy not measured -- null, not fabricated."
+}

@@ -1,0 +1,7 @@
+{
+  "vgg16": "d96450f2cf284291b77a85d665b66727",
+  "mobilenet": "a7d5ef9c36ce450ca9e0eb0c94c64215",
+  "efficientnet": "5a183d969abc4162a86a49d4c31cfe31",
+  "resnet50": "6fa027afb67141c89360bc25b64204e7",
+  "yolov8n": "f38f6054a3bc4384b3750ff50087e477"
+}

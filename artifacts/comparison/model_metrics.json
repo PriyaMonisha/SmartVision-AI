@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "generated_by": "notebooks/06_model_comparison.py",
+  "generated_at": "2026-06-04T11:56:41Z",
+  "champion_classifier": "resnet50",
+  "champion_test_accuracy": 0.654545,
+  "models": {
+    "vgg16": {
+      "test_accuracy": 0.595,
+      "test_precision": null,
+      "test_recall": null,
+      "test_f1": null,
+      "val_accuracy": null,
+      "model_size_mb": 527.8,
+      "cpu_inference_ms": 228.8321,
+      "cpu_inference_note": "Architecture-only benchmark (pretrained=False). Correct topology (same Dropout + head as training). Latency = f(architecture), not weight values.",
+      "epochs_trained": 20,
+      "dataset_round": 1,
+      "weights_available": false
+    },
+    "mobilenet": {
+      "test_accuracy": 0.5667,
+      "test_precision": 0.5756,
+      "test_recall": 0.5667,
+      "test_f1": null,
+      "val_accuracy": null,
+      "model_size_mb": 9.3,
+      "cpu_inference_ms": 38.6634,
+      "cpu_inference_note": "Architecture-only benchmark (pretrained=False). Correct topology (same Dropout + head as training). Latency = f(architecture), not weight values.",
+      "epochs_trained": null,
+      "dataset_round": 2,
+      "weights_available": true
+    },
+    "efficientnet": {
+      "test_accuracy": 0.589394,
+      "test_precision": 0.593076,
+      "test_recall": 0.589394,
+      "test_f1": 0.583345,
+      "val_accuracy": 0.592424,
+      "model_size_mb": 16.4451,
+      "cpu_inference_ms": 50.987,
+      "cpu_inference_note": "Architecture-only benchmark (pretrained=False). Correct topology (same Dropout + head as training). Latency = f(architecture), not weight values.",
+      "epochs_trained": 25,
+      "dataset_round": 2,
+      "weights_available": true
+    },
+    "resnet50": {
+      "test_accuracy": 0.654545,
+      "test_precision": 0.665916,
+      "test_recall": 0.654545,
+      "test_f1": 0.654804,
+      "val_accuracy": 0.636364,
+      "model_size_mb": 94.5326,
+      "cpu_inference_ms": 114.7277,
+      "cpu_inference_note": "Architecture-only benchmark (pretrained=False). Correct topology (same Dropout + head as training). Latency = f(architecture), not weight values.",
+      "epochs_trained": 25,
+      "dataset_round": 2,
+      "weights_available": true
+    }
+  },
+  "detection": {
+    "yolov8n": {
+      "map50": 0.147319,
+      "map50_95": 0.05755,
+      "precision": 0.549415,
+      "recall": 0.184222,
+      "epochs_trained": 50,
+      "cpu_inference_ms": 153.6018,
+      "cpu_inference_includes_nms": true,
+      "cpu_inference_note": "Includes NMS post-processing. CNN values are forward-pass only."
+    }
+  }
+}
