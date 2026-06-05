@@ -459,6 +459,30 @@ def bbox_to_yolo(bbox, img_w, img_h, class_idx):
 
 > `mem_limit: 1.5g` in docker-compose.yml. Breakdown: VGG16 weights = 550MB, ResNet50 = 100MB, MobileNetV2 = 14MB, EfficientNetB0 = 20MB, YOLOv8n = 6MB → total ~690MB for all models loaded. The 1.5GB limit gives ~810MB headroom for inference activation memory, PyTorch runtime, FastAPI worker threads, and concurrent requests. Without a limit, a memory leak or runaway inference could consume the host machine's RAM.
 
+**Q36b. Your Streamlit API client catches `ConnectionError` — what happens if FastAPI returns a 503?**
+
+> `requests` does not raise on non-200 responses by default — it returns the response object. Without `raise_for_status()`, a 503 (models loading) silently returns a JSON body with `{"detail": "Models not yet loaded"}`. The caller tries `resp.json()["predictions"]` and gets a `KeyError` — a raw Python traceback in Streamlit instead of a user-friendly error message.
+>
+> Fix: every `api_client` function calls `resp.raise_for_status()` inside a `try/except Exception` block that feeds into a central `_handle_error()` function. The final branch is `raise RuntimeError(f"Unexpected error: {type(e).__name__}: {e}")` — this covers `JSONDecodeError` from HTML proxy error pages, `ChunkedEncodingError` from dropped connections, and any other type not explicitly caught. Pages only need `try/except RuntimeError → st.error(str(e))`.
+
+**Q36c. How do you prevent the Streamlit Drift Monitor page from losing its data on every UI interaction?**
+
+> Streamlit re-runs the entire page script on every interaction — a slider change, a selectbox update, even scrolling. Without `st.session_state`, data fetched by a "Refresh" button is lost on the next interaction and the page appears blank.
+>
+> Fix: `st.session_state["drift_status"] = api_client.get_drift_status()` on button click. Render from `st.session_state.get("drift_status")` unconditionally. Data persists within the session, making the Refresh button a deliberate explicit trigger — not accidentally re-triggered by UI interaction. This also avoids auto-polling loops (`st.rerun()` + `time.sleep()`) which create runaway re-render cycles.
+
+**Q36d. A user uploads a photo taken in portrait mode on their phone. Your bounding boxes appear in the wrong positions. Why? How do you fix it?**
+
+> JPEG photos from phone cameras encode orientation in EXIF metadata (e.g., tag 274 = 6 means "rotated 90° CW"). PIL's `Image.open()` does NOT apply EXIF rotation by default — it returns the raw pixel data as stored, which is landscape-orientation for a portrait photo.
+>
+> FastAPI receives the raw bytes, opens with PIL (wrong orientation), passes to YOLO → YOLO returns bboxes in the unrotated coordinate system. Streamlit displays the image (also without EXIF correction), draws bboxes → they land in the correct positions on the wrong-orientation image. The user sees a rotated photo with boxes in strange positions.
+>
+> Fix: `ImageOps.exif_transpose(pil_image)` must be called on both sides:
+> - **API** (`detect.py`): before converting to numpy array for YOLO — so bboxes are in the corrected coordinate system.
+> - **Streamlit** (`2_Detect.py`): before PIL drawing — so the display image matches the coordinate system YOLO used.
+>
+> Both sides must apply the same transformation, or the coordinate systems diverge.
+
 ---
 
 ## Section 8 — Monitoring & Drift Detection Questions

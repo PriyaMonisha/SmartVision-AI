@@ -41,7 +41,7 @@ At the end of EVERY section, before declaring it complete:
 ---
 
 ## Current Status
-**Active Section:** Section 10 🔄 (Streamlit Multi-Page App — next)
+**Active Section:** Section 11 🔄 (Docker Compose + Grafana + Airflow Scaffolding — next)
 **Last Working File:** src/monitoring/drift_detector.py, notebooks/08_drift_prometheus.py
 **Last Decision Made:** Section 9 complete. Double-gate KS alert (stat > 0.10 AND p < 0.05)
 eliminates ~95% false-positive rate from n=30 baseline. Rate-limited KS_RUN_EVERY_N=10
@@ -138,12 +138,22 @@ When you see a POST-COMMIT REMINDER, do ALL THREE immediately:
   - Prometheus rules: ConfidenceDriftDetected (5m), HighClassifyLatency P95>1s (2m)
   - Notebook: Test B stat=0.02/p=1.00 (no FP), Test C 3/3 alerts (stat=0.60-0.82)
 
+- [x] Section 10: Streamlit Multi-Page App ✅
+  - streamlit_app.py: Home (health badge, champion stats from model_metrics.json)
+  - pages/1_Classify.py: POST /classify → top-K Plotly bar, cache badge, validation
+  - pages/2_Detect.py: POST /detect → EXIF-corrected PIL bbox drawing, 24-colour palette
+  - pages/3_Model_Comparison.py: 4 tabs (accuracy/speed-accuracy/detection/full table), mtime cache
+  - pages/4_Drift_Monitor.py: go.Indicator gauge, st.session_state, numeric ALERT sort
+  - pages/5_EDA_Insights.py: static EDA artifact display, missing-file guard
+  - streamlit_app/api_client.py: module-level singleton, raise_for_status + catch-all RuntimeError
+  - streamlit_app/plotting.py: accuracy_bar, speed_accuracy_scatter (normalised bubbles), drift_gauge
+  - api/routes/detect.py: ImageOps.exif_transpose before YOLO inference
+
 ### In Progress 🔄
 
-- [ ] Section 10: Streamlit Multi-Page App  ← NEXT
+- [ ] Section 11: Docker Compose + Grafana + Airflow Scaffolding  ← NEXT
 
 ### Remaining 📋
-- [ ] Section 10: Streamlit Multi-Page App
 - [ ] Section 11: Docker Compose + Grafana + Airflow Scaffolding
 - [ ] Section 12: CI + Tests + HuggingFace Deployment
 
