@@ -41,7 +41,7 @@ At the end of EVERY section, before declaring it complete:
 ---
 
 ## Current Status
-**Active Section:** Section 12 🔄 (CI + Tests + HuggingFace Deployment — next)
+**Active Section:** All sections complete ✅
 **Last Working File:** docker-compose.yml, docker-compose.airflow.yml, dags/retrain_drift_dag.py
 **Last Decision Made:** Section 11 complete. 27 bugs pre-fixed in plan review (6 critical, 9 high).
 Key decisions: libgl1 not libgl1-mesa-glx (Bookworm), wget not curl for prom/prometheus healthcheck,
@@ -161,12 +161,22 @@ When you see a POST-COMMIT REMINDER, do ALL THREE immediately:
   - dags/retrain_drift_dag.py: AirflowSkipException (module-level), PythonOperator+requests,
     import requests inside fn (DAG parse speed), trigger_rule=all_done on notify
 
-### In Progress 🔄
+- [x] Section 12: CI + Tests + HuggingFace Deployment ✅
+  - pytest: 57 tests, 0 failures; api/ routes ~95% coverage, drift_detector 91%
+  - tests/conftest.py: MockClassificationModel (real nn.Module), session-scoped JPEG, synthetic_baseline
+  - test_api_health (8), test_api_classify (14), test_api_detect (11), test_drift_detector (14), test_redis_cache (10)
+  - RedisCache: added _client= kwarg for fakeredis injection (keyword-only, no breaking change)
+  - pytest.ini: pythonpath=., --cov=api --cov=src, --strict-markers, coverage.xml
+  - .github/workflows/ci.yml: lint (ruff check + format --check) → test (pytest), pip cache, coverage artifact
+  - spaces.yaml: sdk=streamlit, sdk_version=1.36.0, python_version=3.11, cpu-basic, 5 tags
+  - packages.txt: libgl1, libglib2.0-0 (HF Spaces system deps)
+  - Bug pre-fixed in deploy: raise_server_exceptions=False in TestClient; mock_model as real nn.Module
 
-- [ ] Section 12: CI + Tests + HuggingFace Deployment  ← NEXT
+### In Progress 🔄
+(none)
 
 ### Remaining 📋
-- [ ] Section 12: CI + Tests + HuggingFace Deployment
+(none — all sections complete)
 
 ---
 

@@ -21,19 +21,24 @@ class RedisCache:
     Cache miss or error: returns None — inference runs normally.
     """
 
-    def __init__(self, host: str, port: int, timeout: float = 1.0) -> None:
+    def __init__(self, host: str = "redis", port: int = 6379, timeout: float = 1.0, *, _client=None) -> None:
         self._available = False
         self._client = None
         try:
-            import redis as redis_lib
-            self._client = redis_lib.Redis(
-                host=host,
-                port=port,
-                socket_connect_timeout=timeout,  # fail fast — not 20-30s OS timeout
-                socket_timeout=timeout,
-                decode_responses=False,          # raw bytes for json.loads
-            )
-            self._client.ping()
+            if _client is not None:
+                # Injected client (used in tests via fakeredis)
+                self._client = _client
+                self._client.ping()
+            else:
+                import redis as redis_lib
+                self._client = redis_lib.Redis(
+                    host=host,
+                    port=port,
+                    socket_connect_timeout=timeout,  # fail fast — not 20-30s OS timeout
+                    socket_timeout=timeout,
+                    decode_responses=False,          # raw bytes for json.loads
+                )
+                self._client.ping()
             self._available = True
             logger.info(f"Redis connected: {host}:{port}")
         except Exception as e:
