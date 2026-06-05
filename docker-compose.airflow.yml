@@ -1,0 +1,131 @@
+# docker-compose.airflow.yml
+# Airflow overlay for SmartVision AI
+#
+# Usage (always include the core compose file):
+#   docker compose -f docker-compose.yml -f docker-compose.airflow.yml up -d
+#
+# Prerequisites:
+#   AIRFLOW_FERNET_KEY must be set in .env
+#   Generate: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#
+# Notes:
+#   - Requires Docker Compose v2.1+ for service_completed_successfully condition
+#   - Airflow services join the 'smartvision' network so DAGs can reach fastapi:8000
+#   - airflow-init is a one-shot container (restart: "no") — runs DB migration + admin user creation
+
+# ── Shared config across all Airflow services ──────────────────────────────────
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.2
+  networks: [smartvision]
+  volumes:
+    - ./dags:/opt/airflow/dags:ro
+    - airflow_logs:/opt/airflow/logs
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+    # :? syntax fails at compose up if variable is unset — prevents silent Fernet errors
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?AIRFLOW_FERNET_KEY must be set in .env. Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"}
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_FERNET_KEY}   # reuse for dev; separate in prod
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"   # keeps DAG list clean
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
+    FASTAPI_URL: http://fastapi:8000   # available to DAG PythonOperators via os.environ
+  depends_on:
+    airflow-postgres:
+      condition: service_healthy
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  smartvision:
+    external: true   # defined in docker-compose.yml; Airflow DAGs can reach fastapi:8000
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  airflow_logs:
+    driver: local
+  airflow_postgres_data:
+    driver: local
+
+# ── Services ───────────────────────────────────────────────────────────────────
+services:
+
+  # Airflow metadata database
+  airflow-postgres:
+    image: postgres:16-alpine
+    container_name: smartvision-airflow-postgres
+    restart: unless-stopped
+    networks: [smartvision]
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # -d airflow: checks the specific database exists, not just that postgres is running
+      test: ["CMD", "pg_isready", "-U", "airflow", "-d", "airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # One-shot DB initialiser — runs once and exits
+  airflow-init:
+    <<: *airflow-common
+    container_name: smartvision-airflow-init
+    restart: "no"   # quoted — unquoted 'no' is YAML boolean false
+    # List form + | literal scalar avoids > folded-scalar mangling \ continuations
+    command:
+      - bash
+      - -c
+      - |
+        airflow db migrate &&
+        airflow users create \
+          --username admin \
+          --password admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@smartvision.local
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+
+  # Airflow web UI — port 8080
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: smartvision-airflow-webserver
+    restart: unless-stopped
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully   # init must finish (exit 0) before webserver starts
+
+  # Airflow task scheduler
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: smartvision-airflow-scheduler
+    restart: unless-stopped
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "$${HOSTNAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully

@@ -1,0 +1,19 @@
+# monitoring/grafana/provisioning/dashboards/dashboard.yml
+# Tells Grafana where to find dashboard JSON files
+# Path must match the bind mount in docker-compose.yml:
+#   ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+apiVersion: 1
+
+providers:
+  - name: SmartVision
+    orgId: 1
+    folder: SmartVision AI
+    folderUid: smartvision-folder   # stable UID prevents duplicate folders on restart
+    type: file
+    disableDeletion: false          # if JSON deleted from disk, dashboard is removed (config = source of truth)
+    updateIntervalSeconds: 30       # poll interval for new/changed dashboard files
+    allowUiUpdates: false           # prevent UI edits — provisioned config is authoritative
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

@@ -1,0 +1,152 @@
+# docker-compose.yml
+# SmartVision AI — Core serving stack
+# Services: redis, fastapi, prometheus, grafana, streamlit
+#
+# Usage:
+#   docker compose up -d                                              # core stack only
+#   docker compose -f docker-compose.yml \
+#     -f docker-compose.airflow.yml up -d                            # with Airflow
+#
+# Prerequisites:
+#   Copy .env.example to .env and fill in HF_TOKEN, HF_REPO_ID
+
+networks:
+  smartvision:
+    driver: bridge
+    name: smartvision   # explicit name — prevents dir-prefix surprises for Airflow overlay
+
+volumes:
+  model_cache:          # persists model weights across container restarts (Rule: Docker volume)
+  redis_data:
+  grafana_data:         # persists Grafana DB, plugins, and user preferences
+
+services:
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: smartvision-redis
+    restart: unless-stopped
+    networks: [smartvision]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    # Note: no auth for local dev.
+    # Production: add: command: redis-server --requirepass ${REDIS_PASSWORD}
+
+  # ── FastAPI ────────────────────────────────────────────────────────────────
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: smartvision-app:latest   # named so streamlit reuses the same built image
+    container_name: smartvision-fastapi
+    restart: unless-stopped
+    mem_limit: 1.5g                 # ~690MB models + headroom (config.py memory budget)
+    networks: [smartvision]
+    volumes:
+      - model_cache:/app/models     # persists HF-downloaded weights across restarts
+    environment:
+      FAST_MODE: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # HF_TOKEN / HF_REPO_ID: set in .env (see .env.example)
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_REPO_ID: ${HF_REPO_ID:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy  # Redis must accept connections before FastAPI starts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s  # model loading (4 CNNs + YOLOv8n) takes 60-120s
+
+  # ── Prometheus ────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: smartvision-prometheus
+    restart: unless-stopped
+    networks: [smartvision]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus_rules.yml:/etc/prometheus/rules.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - fastapi   # service_started (implicit) — prometheus retries scrapes automatically
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/etc/prometheus/console_libraries
+      - --web.console.templates=/etc/prometheus/consoles
+      - --web.enable-lifecycle   # enables POST /-/reload for hot config reload
+    healthcheck:
+      # prom/prometheus image has wget but NOT curl
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Grafana ───────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: smartvision-grafana
+    restart: unless-stopped
+    networks: [smartvision]
+    volumes:
+      # Order: named volume provides base dir, bind mounts overlay specific subdirs
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy  # ensures datasource is reachable at Grafana startup
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"       # keep login for admin access
+      GF_ANALYTICS_REPORTING_ENABLED: "false"   # disable telemetry
+      GF_SERVER_DOMAIN: localhost
+
+  # ── Streamlit ─────────────────────────────────────────────────────────────
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: smartvision-app:latest   # reuses fastapi build — no second Docker build needed
+    container_name: smartvision-streamlit
+    restart: unless-stopped
+    networks: [smartvision]
+    # List form avoids YAML folded-scalar shell interpretation issues
+    command:
+      - streamlit
+      - run
+      - streamlit_app.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+      - --server.headless=true
+      - --browser.gatherUsageStats=false
+    environment:
+      FASTAPI_URL: http://fastapi:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      fastapi:
+        condition: service_healthy  # Rule 22: model-loading service must be healthy first
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

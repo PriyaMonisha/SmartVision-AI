@@ -1,0 +1,59 @@
+# ── Build context exclusions for SmartVision AI ───────────────────────────────
+# Keep: artifacts/, monitoring/, config.py, api/, src/, streamlit_app/,
+#       pages/, requirements-docker.txt
+
+# Version control
+.git/
+.github/
+.gitignore
+
+# Python cache and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Data — raw data never in serving image; processed data loaded at runtime
+data/raw/
+
+# ML experiment tracking
+mlruns/
+runs/
+
+# Development notebooks
+notebooks/
+*.ipynb
+
+# Test infrastructure
+tests/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Documentation
+*.md
+README*
+CHANGELOG*
+LICENSE*
+
+# IDE and OS artifacts
+.claude/
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets — NEVER bake into image
+.env
+
+# Container orchestration files — not needed inside image
+docker-compose*.yml
+.dockerignore

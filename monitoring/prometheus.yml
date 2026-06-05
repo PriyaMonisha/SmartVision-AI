@@ -1,0 +1,38 @@
+# monitoring/prometheus.yml
+# Prometheus configuration for SmartVision AI
+# Mounted read-only into prometheus container at /etc/prometheus/prometheus.yml
+#
+# Data retention: default 15 days, 1GB cap.
+# To override, add to docker-compose.yml prometheus command:
+#   --storage.tsdb.retention.time=30d
+#   --storage.tsdb.retention.size=5GB
+
+global:
+  scrape_interval: 15s       # how often to pull metrics from targets
+  evaluation_interval: 15s   # how often to evaluate alert rules
+  external_labels:
+    monitor: smartvision-monitor
+    environment: local         # override in production: environment: production
+
+# Alert rules (mounted from monitoring/prometheus_rules.yml)
+rule_files:
+  - /etc/prometheus/rules.yml
+
+# Alertmanager integration — uncomment when alertmanager service is added
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # SmartVision FastAPI application metrics
+  - job_name: smartvision_fastapi
+    static_configs:
+      - targets: ['fastapi:8000']
+    metrics_path: /metrics
+    scrape_timeout: 10s   # must be <= scrape_interval (15s) ✓
+
+  # Prometheus self-monitoring
+  - job_name: smartvision_prometheus
+    static_configs:
+      - targets: ['localhost:9090']

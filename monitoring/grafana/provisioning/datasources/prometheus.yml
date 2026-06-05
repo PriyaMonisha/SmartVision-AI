@@ -1,0 +1,24 @@
+# monitoring/grafana/provisioning/datasources/prometheus.yml
+# Grafana datasource provisioning — loaded at container startup
+# Enables zero-manual-configuration Prometheus integration (Rule 35)
+#
+# CRITICAL: access must be "proxy" (NOT "direct")
+#   "direct" = browser connects to prometheus:9090 — FAILS in Docker because
+#              the browser cannot resolve Docker internal hostnames
+#   "proxy"  = Grafana server connects to prometheus:9090 — works within Docker network
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    orgId: 1
+    access: proxy                    # server-side proxy — REQUIRED for Docker networking
+    url: http://prometheus:9090
+    isDefault: true
+    uid: "smartvision-prometheus"    # must match datasource.uid in all dashboard panel definitions
+    editable: false                  # prevent UI edits overwriting provisioned config
+    version: 1
+    jsonData:
+      timeInterval: "15s"            # matches prometheus scrape_interval
+      httpMethod: POST               # more efficient for larger/complex queries
