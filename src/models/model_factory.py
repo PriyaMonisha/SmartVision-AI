@@ -82,10 +82,10 @@ def get_model(
         ValueError: unknown model_name.
     """
     _builders = {
-        "mobilenet":    _build_mobilenet_v2,
+        "mobilenet": _build_mobilenet_v2,
         "efficientnet": _build_efficientnet_b0,
-        "resnet50":     _build_resnet50,
-        "vgg16":        _build_vgg16,
+        "resnet50": _build_resnet50,
+        "vgg16": _build_vgg16,
     }
     if model_name not in _builders:
         raise ValueError(
@@ -187,23 +187,27 @@ def get_per_class_accuracy(
     """Per-class accuracy sorted ascending (weakest first). Forward passes only."""
     model.eval()
     correct: dict[str, int] = {n: 0 for n in class_names}
-    total:   dict[str, int] = {n: 0 for n in class_names}
+    total: dict[str, int] = {n: 0 for n in class_names}
     with torch.no_grad():
         for images, labels in loader:
-            images  = images.to(device, non_blocking=True)
-            labels  = labels.to(device, non_blocking=True)
-            preds   = model(images).argmax(dim=1)
+            images = images.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
+            preds = model(images).argmax(dim=1)
             for label, pred in zip(labels.cpu(), preds.cpu()):
                 name = class_names[label.item()]
-                total[name]   += 1
+                total[name] += 1
                 correct[name] += int(label.item() == pred.item())
-    return dict(sorted(
-        {n: correct[n] / total[n] for n in class_names if total[n] > 0}.items(),
-        key=lambda kv: kv[1],
-    ))
+    return dict(
+        sorted(
+            {n: correct[n] / total[n] for n in class_names if total[n] > 0}.items(),
+            key=lambda kv: kv[1],
+        )
+    )
 
 
-def _build_mobilenet_v2(num_classes: int, dropout: float = 0.4, pretrained: bool = True) -> nn.Module:
+def _build_mobilenet_v2(
+    num_classes: int, dropout: float = 0.4, pretrained: bool = True
+) -> nn.Module:
     """
     MobileNetV2: all features frozen, new classifier head.
     dropout=0.4 (Round 3, up from pretrained default 0.2).
@@ -215,7 +219,7 @@ def _build_mobilenet_v2(num_classes: int, dropout: float = 0.4, pretrained: bool
     model = models.mobilenet_v2(weights=weights)
     for param in model.features.parameters():
         param.requires_grad = False
-    in_features = model.classifier[1].in_features   # read BEFORE replacement
+    in_features = model.classifier[1].in_features  # read BEFORE replacement
     model.classifier = nn.Sequential(
         nn.Dropout(p=dropout),
         nn.Linear(in_features, num_classes),
@@ -224,7 +228,9 @@ def _build_mobilenet_v2(num_classes: int, dropout: float = 0.4, pretrained: bool
     return model
 
 
-def _build_efficientnet_b0(num_classes: int, dropout: float = 0.3, pretrained: bool = True) -> nn.Module:
+def _build_efficientnet_b0(
+    num_classes: int, dropout: float = 0.3, pretrained: bool = True
+) -> nn.Module:
     """
     EfficientNetB0: features frozen, new classifier head. Head-only training.
     dropout NOT raised: no Phase 2 unfreeze, structurally lower overfit risk.
@@ -244,7 +250,9 @@ def _build_efficientnet_b0(num_classes: int, dropout: float = 0.3, pretrained: b
     return model
 
 
-def _build_resnet50(num_classes: int, dropout: float = 0.3, pretrained: bool = True) -> nn.Module:
+def _build_resnet50(
+    num_classes: int, dropout: float = 0.3, pretrained: bool = True
+) -> nn.Module:
     """
     ResNet50: ALL params frozen, then new fc head (Phase 1 ready).
     Round 3 correction: freeze ALL (incl. original fc), then replace fc.
@@ -254,10 +262,10 @@ def _build_resnet50(num_classes: int, dropout: float = 0.3, pretrained: bool = T
     """
     weights = models.ResNet50_Weights.IMAGENET1K_V2 if pretrained else None
     model = models.resnet50(weights=weights)
-    for param in model.parameters():                 # freeze ALL
+    for param in model.parameters():  # freeze ALL
         param.requires_grad = False
-    in_features = model.fc.in_features              # 2048
-    model.fc = nn.Sequential(                       # new: requires_grad=True
+    in_features = model.fc.in_features  # 2048
+    model.fc = nn.Sequential(  # new: requires_grad=True
         nn.Dropout(p=dropout),
         nn.Linear(in_features, num_classes),
     )
@@ -265,7 +273,9 @@ def _build_resnet50(num_classes: int, dropout: float = 0.3, pretrained: bool = T
     return model
 
 
-def _build_vgg16(num_classes: int, dropout: float = 0.5, pretrained: bool = True) -> nn.Module:
+def _build_vgg16(
+    num_classes: int, dropout: float = 0.5, pretrained: bool = True
+) -> nn.Module:
     """
     VGG16: SKIPPED (59.5% ceiling). Included so get_model("vgg16") doesn't crash.
     VGG16 has no BatchNorm -> freeze_bn=False at all train() call sites.
@@ -282,10 +292,12 @@ def _build_vgg16(num_classes: int, dropout: float = 0.5, pretrained: bool = True
 
 
 def _log_trainable(model: nn.Module, label: str) -> None:
-    total     = sum(p.numel() for p in model.parameters())
+    total = sum(p.numel() for p in model.parameters())
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    pct       = 100.0 * trainable / total if total > 0 else 0.0
-    msg = (f"{label}: {trainable:,} / {total:,} trainable "
-           f"({pct:.1f}%) | {trainable / _TRAIN_SIZE:.0f} params/img")
+    pct = 100.0 * trainable / total if total > 0 else 0.0
+    msg = (
+        f"{label}: {trainable:,} / {total:,} trainable "
+        f"({pct:.1f}%) | {trainable / _TRAIN_SIZE:.0f} params/img"
+    )
     logger.info(msg)
     print(f"  {msg}")

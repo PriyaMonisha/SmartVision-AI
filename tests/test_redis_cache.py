@@ -22,12 +22,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
 
 from src.inference.redis_cache import RedisCache
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 def _make_cache(fake_redis) -> RedisCache:
     """Build a RedisCache backed by fakeredis."""
@@ -35,6 +35,7 @@ def _make_cache(fake_redis) -> RedisCache:
 
 
 # ── get / set round-trips ──────────────────────────────────────────────────────
+
 
 def test_get_returns_none_on_cache_miss(fake_redis_client) -> None:
     cache = _make_cache(fake_redis_client)
@@ -53,7 +54,14 @@ def test_set_get_survives_complex_dict(fake_redis_client) -> None:
     cache = _make_cache(fake_redis_client)
     data = {
         "detections": [
-            {"class_name": "dog", "confidence": 0.92, "x1": 10.0, "y1": 20.0, "x2": 50.0, "y2": 80.0}
+            {
+                "class_name": "dog",
+                "confidence": 0.92,
+                "x1": 10.0,
+                "y1": 20.0,
+                "x2": 50.0,
+                "y2": 80.0,
+            }
         ],
         "inference_time_ms": 38.2,
     }
@@ -63,6 +71,7 @@ def test_set_get_survives_complex_dict(fake_redis_client) -> None:
 
 
 # ── Graceful degradation ───────────────────────────────────────────────────────
+
 
 def test_redis_unavailable_available_is_false() -> None:
     """Connection error during ping → _available=False."""
@@ -90,6 +99,7 @@ def test_redis_unavailable_set_is_noop() -> None:
 
 # ── Key format helpers ─────────────────────────────────────────────────────────
 
+
 def test_make_classify_key_format(fake_redis_client) -> None:
     """sv:classify:<32-hex>:<model_name>:<model_hash>"""
     key = RedisCache.make_classify_key(b"test image bytes", "resnet50", "abcd1234")
@@ -112,6 +122,7 @@ def test_make_detect_key_format(fake_redis_client) -> None:
 
 
 # ── List operations (drift monitoring) ────────────────────────────────────────
+
 
 def test_push_to_list_and_get_list_round_trip(fake_redis_client) -> None:
     """push_to_list (float) → get_list returns list[float]."""

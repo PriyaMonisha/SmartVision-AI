@@ -45,7 +45,7 @@ import torch
 import torchvision.transforms.v2 as T
 
 IMAGENET_MEAN: list[float] = [0.485, 0.456, 0.406]
-IMAGENET_STD:  list[float] = [0.229, 0.224, 0.225]
+IMAGENET_STD: list[float] = [0.229, 0.224, 0.225]
 
 
 def get_train_transforms(image_size: int = 224) -> T.Compose:
@@ -69,43 +69,39 @@ def get_train_transforms(image_size: int = 224) -> T.Compose:
       [6]      < [7]: ZoomOut fill is float32 [0, 1] space
       [9]     = last: Normalize must be final transform
     """
-    return T.Compose([
-        # PIL-space geometric
-        T.RandomHorizontalFlip(p=0.5),
-        T.RandomRotation(degrees=20),
-
-        # PIL-space color
-        T.ColorJitter(
-            brightness=0.3,
-            contrast=0.3,
-            saturation=0.2,
-            hue=0.05,
-        ),
-        T.RandomGrayscale(p=0.05),
-
-        # PIL-space geometric (perspective)
-        # fill=0 default: black border in uint8 -> ~[-2.12,-2.04,-1.80] after Normalize.
-        # Accepted: borders are small (<5% of pixels) and infrequent (p=0.3).
-        T.RandomPerspective(distortion_scale=0.2, p=0.3),
-
-        # Convert to float32 tensor
-        T.ToImage(),
-        T.ToDtype(torch.float32, scale=True),
-
-        # Float32 tensor augmentation
-        # fill=IMAGENET_MEAN: padded pixels normalize to 0.0 per channel.
-        T.RandomZoomOut(
-            fill=IMAGENET_MEAN,
-            side_range=(1.0, 1.4),
-            p=0.3,
-        ),
-
-        # Finalize (single resize after all spatial augmentation)
-        T.Resize((image_size, image_size), antialias=True),
-
-        # Normalize last
-        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-    ])
+    return T.Compose(
+        [
+            # PIL-space geometric
+            T.RandomHorizontalFlip(p=0.5),
+            T.RandomRotation(degrees=20),
+            # PIL-space color
+            T.ColorJitter(
+                brightness=0.3,
+                contrast=0.3,
+                saturation=0.2,
+                hue=0.05,
+            ),
+            T.RandomGrayscale(p=0.05),
+            # PIL-space geometric (perspective)
+            # fill=0 default: black border in uint8 -> ~[-2.12,-2.04,-1.80] after Normalize.
+            # Accepted: borders are small (<5% of pixels) and infrequent (p=0.3).
+            T.RandomPerspective(distortion_scale=0.2, p=0.3),
+            # Convert to float32 tensor
+            T.ToImage(),
+            T.ToDtype(torch.float32, scale=True),
+            # Float32 tensor augmentation
+            # fill=IMAGENET_MEAN: padded pixels normalize to 0.0 per channel.
+            T.RandomZoomOut(
+                fill=IMAGENET_MEAN,
+                side_range=(1.0, 1.4),
+                p=0.3,
+            ),
+            # Finalize (single resize after all spatial augmentation)
+            T.Resize((image_size, image_size), antialias=True),
+            # Normalize last
+            T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ]
+    )
 
 
 def get_eval_transforms(image_size: int = 224) -> T.Compose:
@@ -114,18 +110,21 @@ def get_eval_transforms(image_size: int = 224) -> T.Compose:
     Matches inference-time preprocessing exactly.
     Contains zero stochastic transforms.
     """
-    return T.Compose([
-        T.ToImage(),
-        T.ToDtype(torch.float32, scale=True),
-        T.Resize((image_size, image_size), antialias=True),
-        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-    ])
+    return T.Compose(
+        [
+            T.ToImage(),
+            T.ToDtype(torch.float32, scale=True),
+            T.Resize((image_size, image_size), antialias=True),
+            T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ]
+    )
 
 
-def denormalize(tensor: torch.Tensor) -> "np.ndarray":
+def denormalize(tensor: torch.Tensor) -> "np.ndarray":  # noqa: F821
     """Reverse ImageNet normalization. Returns HWC uint8 numpy array [0, 255]."""
     import numpy as np
+
     mean = torch.tensor(IMAGENET_MEAN, dtype=torch.float32).view(3, 1, 1)
-    std  = torch.tensor(IMAGENET_STD,  dtype=torch.float32).view(3, 1, 1)
-    img  = tensor.clone().cpu() * std + mean
+    std = torch.tensor(IMAGENET_STD, dtype=torch.float32).view(3, 1, 1)
+    img = tensor.clone().cpu() * std + mean
     return (img.clamp(0.0, 1.0).permute(1, 2, 0).numpy() * 255).astype(np.uint8)

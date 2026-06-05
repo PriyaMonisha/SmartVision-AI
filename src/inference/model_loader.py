@@ -104,6 +104,7 @@ def _load_yolo() -> Optional[Any]:
         return None
     try:
         from ultralytics import YOLO
+
         return YOLO(str(YOLO_WEIGHT_PATH))
     except Exception as e:
         logger.error(f"Failed to load YOLO: {e}")
@@ -140,7 +141,11 @@ def _download_with_timeout(name: str) -> Optional[Path]:
     """Download weight from HF Hub with HF_DOWNLOAD_TIMEOUT second limit.
     Returns local Path on success, None on timeout or any error.
     """
-    if not cfg.HF_TOKEN or not cfg.HF_REPO_ID or cfg.HF_REPO_ID == "your-username/smartvision-models":
+    if (
+        not cfg.HF_TOKEN
+        or not cfg.HF_REPO_ID
+        or cfg.HF_REPO_ID == "your-username/smartvision-models"
+    ):
         logger.warning(
             f"HF_TOKEN or HF_REPO_ID not configured. Cannot download {name}. "
             "Set HF_TOKEN and HF_REPO_ID in .env to enable automatic download."

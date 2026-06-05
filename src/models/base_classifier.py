@@ -15,8 +15,12 @@ try:
     import torch
     import torch.nn as nn
     from sklearn.metrics import (
-        accuracy_score, precision_score, recall_score, f1_score,
+        accuracy_score,
+        precision_score,
+        recall_score,
+        f1_score,
     )
+
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -53,9 +57,9 @@ def _freeze_backbone_bn(model: "nn.Module") -> None:
         if not isinstance(module, (nn.BatchNorm2d, nn.BatchNorm1d)):
             continue
         if module.weight is None:
-            module.eval()                     # affine=False: always freeze stats
+            module.eval()  # affine=False: always freeze stats
         elif not module.weight.requires_grad:
-            module.eval()                     # affine frozen: parent block is frozen
+            module.eval()  # affine frozen: parent block is frozen
 
 
 def train_one_epoch(
@@ -83,8 +87,8 @@ def train_one_epoch(
         _freeze_backbone_bn(model)
 
     total_loss = 0.0
-    correct    = 0
-    total      = 0
+    correct = 0
+    total = 0
 
     for images, labels in loader:
         images = images.to(device, non_blocking=True)
@@ -94,7 +98,7 @@ def train_one_epoch(
         if scaler is not None:
             with torch.cuda.amp.autocast():
                 outputs = model(images)
-                loss    = criterion(outputs, labels)
+                loss = criterion(outputs, labels)
             scaler.scale(loss).backward()
 
             if grad_clip is not None:
@@ -110,7 +114,7 @@ def train_one_epoch(
             scaler.update()
         else:
             outputs = model(images)
-            loss    = criterion(outputs, labels)
+            loss = criterion(outputs, labels)
             loss.backward()
 
             if grad_clip is not None:
@@ -122,12 +126,12 @@ def train_one_epoch(
             optimizer.step()
 
         total_loss += loss.item() * images.size(0)
-        preds       = outputs.argmax(dim=1)
-        correct    += (preds == labels).sum().item()
-        total      += images.size(0)
+        preds = outputs.argmax(dim=1)
+        correct += (preds == labels).sum().item()
+        total += images.size(0)
 
     return {
-        "loss":     total_loss / total,
+        "loss": total_loss / total,
         "accuracy": correct / total,
     }
 
@@ -142,7 +146,7 @@ def evaluate(
     """Evaluate model. Returns loss, accuracy, precision, recall, F1 (macro)."""
     model.eval()
     total_loss = 0.0
-    all_preds  = []
+    all_preds = []
     all_labels = []
 
     with torch.no_grad():
@@ -150,7 +154,7 @@ def evaluate(
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
             outputs = model(images)
-            loss    = criterion(outputs, labels)
+            loss = criterion(outputs, labels)
             total_loss += loss.item() * images.size(0)
             preds = outputs.argmax(dim=1)
             all_preds.extend(preds.cpu().numpy())
@@ -158,11 +162,13 @@ def evaluate(
 
     n = len(all_labels)
     return {
-        "loss":      total_loss / n,
-        "accuracy":  accuracy_score(all_labels, all_preds),
-        "precision": precision_score(all_labels, all_preds, average="macro", zero_division=0),
-        "recall":    recall_score(all_labels, all_preds,    average="macro", zero_division=0),
-        "f1":        f1_score(all_labels, all_preds,        average="macro", zero_division=0),
+        "loss": total_loss / n,
+        "accuracy": accuracy_score(all_labels, all_preds),
+        "precision": precision_score(
+            all_labels, all_preds, average="macro", zero_division=0
+        ),
+        "recall": recall_score(all_labels, all_preds, average="macro", zero_division=0),
+        "f1": f1_score(all_labels, all_preds, average="macro", zero_division=0),
     }
 
 
@@ -192,10 +198,13 @@ def train(
     not last epoch.
     """
     history = {
-        "train_loss": [], "train_acc": [],
-        "val_loss":   [], "val_acc":   [], "val_f1": [],
+        "train_loss": [],
+        "train_acc": [],
+        "val_loss": [],
+        "val_acc": [],
+        "val_f1": [],
     }
-    best_val_acc   = 0.0
+    best_val_acc = 0.0
     patience_count = 0
 
     # Resolve checkpoint path ONCE before the loop — avoid reassigning inside loop
@@ -208,8 +217,14 @@ def train(
         t0 = time.time()
 
         train_metrics = train_one_epoch(
-            model, train_loader, optimizer, criterion, device,
-            scaler=scaler, freeze_bn=freeze_bn, grad_clip=grad_clip,
+            model,
+            train_loader,
+            optimizer,
+            criterion,
+            device,
+            scaler=scaler,
+            freeze_bn=freeze_bn,
+            grad_clip=grad_clip,
         )
         val_metrics = evaluate(model, val_loader, criterion, device)
 
@@ -219,11 +234,11 @@ def train(
             else:
                 scheduler.step()
 
-        history["train_loss"].append(round(train_metrics["loss"],     6))
-        history["train_acc"].append( round(train_metrics["accuracy"], 6))
-        history["val_loss"].append(  round(val_metrics["loss"],       6))
-        history["val_acc"].append(   round(val_metrics["accuracy"],   6))
-        history["val_f1"].append(    round(val_metrics["f1"],         6))
+        history["train_loss"].append(round(train_metrics["loss"], 6))
+        history["train_acc"].append(round(train_metrics["accuracy"], 6))
+        history["val_loss"].append(round(val_metrics["loss"], 6))
+        history["val_acc"].append(round(val_metrics["accuracy"], 6))
+        history["val_f1"].append(round(val_metrics["f1"], 6))
 
         elapsed = time.time() - t0
         logger.info(
@@ -239,18 +254,25 @@ def train(
             if checkpoint_path is not None:
                 # Cast to Python native types — numpy.float64 (from accuracy_score)
                 # is rejected by weights_only=True during reload
-                torch.save({
-                    "epoch":            int(epoch),
-                    "model_state_dict": model.state_dict(),
-                    "val_acc":          float(best_val_acc),
-                    "val_loss":         float(val_metrics["loss"]),
-                    "val_f1":           float(val_metrics["f1"]),
-                }, checkpoint_path)
-                logger.info(f"  Saved best: {checkpoint_path.name} (val_acc={best_val_acc:.4f})")
+                torch.save(
+                    {
+                        "epoch": int(epoch),
+                        "model_state_dict": model.state_dict(),
+                        "val_acc": float(best_val_acc),
+                        "val_loss": float(val_metrics["loss"]),
+                        "val_f1": float(val_metrics["f1"]),
+                    },
+                    checkpoint_path,
+                )
+                logger.info(
+                    f"  Saved best: {checkpoint_path.name} (val_acc={best_val_acc:.4f})"
+                )
         else:
             patience_count += 1
             if patience_count >= patience:
-                logger.info(f"[{model_name}] Early stopping at epoch {epoch} (patience={patience})")
+                logger.info(
+                    f"[{model_name}] Early stopping at epoch {epoch} (patience={patience})"
+                )
                 break
 
     # Reload best checkpoint so caller receives best model, not last epoch
@@ -264,6 +286,7 @@ def train(
 
 
 # ── Inference helpers ─────────────────────────────────────────────────────────
+
 
 def save_model(model, path: Path) -> None:
     """Save state_dict only — never full model pickle (Rule 5)."""
@@ -283,7 +306,9 @@ def load_model(model, path: Path, device: str = "cpu"):
     return model
 
 
-def benchmark_inference(model, device, image_size: int = 224, n: int = 100, warmup: int = 10) -> float:
+def benchmark_inference(
+    model, device, image_size: int = 224, n: int = 100, warmup: int = 10
+) -> float:
     """Returns mean inference time in milliseconds over n runs after warmup.
 
     CUDA ops are async — synchronize before/after each timing window so that

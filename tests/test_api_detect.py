@@ -23,7 +23,7 @@ Tests verify the conf_threshold is forwarded correctly.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 import torch
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 class MockYOLOBox:
     """Minimal YOLO box with real tensors so .item() works."""
@@ -79,6 +80,7 @@ def _post_detect(
 
 # ── Cache hit / miss ───────────────────────────────────────────────────────────
 
+
 def test_detect_cache_miss_returns_cached_false(
     app_client: "TestClient", test_image_bytes: bytes
 ) -> None:
@@ -111,6 +113,7 @@ def test_detect_cache_hit_returns_cached_true(
 
 # ── Confidence threshold forwarded to YOLO ────────────────────────────────────
 
+
 def test_detect_conf_threshold_forwarded_to_yolo(
     app_client: "TestClient", test_image_bytes: bytes
 ) -> None:
@@ -142,6 +145,7 @@ def test_detect_empty_detections_when_yolo_returns_none(
 
 # ── 503 error conditions ───────────────────────────────────────────────────────
 
+
 def test_detect_503_when_models_not_ready(
     app_client: "TestClient", test_image_bytes: bytes
 ) -> None:
@@ -165,6 +169,7 @@ def test_detect_503_when_yolo_model_missing(
 
 # ── Bbox coordinate correctness ────────────────────────────────────────────────
 
+
 def test_detect_bbox_x1_lt_x2_and_y1_lt_y2(
     app_client: "TestClient",
     test_image_bytes: bytes,
@@ -184,6 +189,7 @@ def test_detect_bbox_x1_lt_x2_and_y1_lt_y2(
 
 
 # ── Response body correctness ──────────────────────────────────────────────────
+
 
 def test_detect_inference_time_is_positive(
     app_client: "TestClient", test_image_bytes: bytes
@@ -217,6 +223,7 @@ def test_detect_response_validates_schema(
 
 # ── Input validation ───────────────────────────────────────────────────────────
 
+
 def test_detect_non_image_bytes_rejected(app_client: "TestClient") -> None:
     """Garbage bytes that PIL cannot open → error before YOLO is called."""
     app_client.app.state.models["yolo"] = _make_yolo_mock()
@@ -245,7 +252,7 @@ def test_detect_real_box_coordinates_extracted_correctly(
         dets = response.json()["detections"]
         assert len(dets) == 1
         d = dets[0]
-        assert d["class_name"] == "person"   # names[0] = "person"
+        assert d["class_name"] == "person"  # names[0] = "person"
         assert d["confidence"] == pytest.approx(0.88, abs=1e-4)
         assert d["x1"] == pytest.approx(5.0)
         assert d["y1"] == pytest.approx(10.0)

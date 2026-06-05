@@ -55,13 +55,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # models_ready stays False — /health returns 503 on every request
 
     # Redis — 1s socket_connect_timeout; disables cache gracefully if Redis is down
-    app.state.redis = RedisCache(host=cfg.REDIS_HOST, port=cfg.REDIS_PORT, password=cfg.REDIS_PASSWORD)
+    app.state.redis = RedisCache(
+        host=cfg.REDIS_HOST, port=cfg.REDIS_PORT, password=cfg.REDIS_PASSWORD
+    )
 
     # Build eval transform once at startup — not per-request (avoids per-call allocation)
     app.state.eval_transform = get_eval_transforms(image_size=cfg.IMAGE_SIZE)
 
     # Drift detector — initialized after Redis so redis_client is available for buffer restore
     from src.monitoring.drift_detector import DriftDetector
+
     try:
         app.state.drift_detector = DriftDetector(
             baseline_path=cfg.DRIFT_BASELINE_PATH,
@@ -105,6 +108,7 @@ async def count_http_errors(request: Request, call_next) -> Response:
             endpoint=endpoint,
         ).inc()
     return response
+
 
 app.include_router(health.router)
 app.include_router(classify.router)

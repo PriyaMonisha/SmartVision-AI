@@ -6,7 +6,7 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -18,10 +18,12 @@ logger = logging.getLogger(__name__)
 #   np.bool_ BEFORE np.integer (np.bool_ subclasses np.integer in numpy < 2.0)
 # Without this every json.dump() on model metrics crashes with TypeError.
 
+
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj: Any) -> Any:
         try:
             import torch
+
             if isinstance(obj, torch.Tensor):
                 return obj.item() if obj.ndim == 0 else obj.tolist()
         except ImportError:
@@ -57,8 +59,10 @@ def load_json(path: Path) -> Any:
 # Rule 37: use HfApi().upload_file() — hf_hub_upload() does not exist
 # Always create_repo(exist_ok=True) before first upload
 
+
 def create_hub_repo(repo_id: str, token: str, private: bool = True) -> None:
     from huggingface_hub import create_repo
+
     try:
         create_repo(
             repo_id=repo_id,
@@ -73,8 +77,11 @@ def create_hub_repo(repo_id: str, token: str, private: bool = True) -> None:
         logger.warning("Create manually at https://huggingface.co/new")
 
 
-def upload_model_to_hub(local_path: Path, filename: str, repo_id: str, token: str) -> None:
+def upload_model_to_hub(
+    local_path: Path, filename: str, repo_id: str, token: str
+) -> None:
     from huggingface_hub import HfApi
+
     local_path = Path(local_path)
     if not local_path.exists():
         raise FileNotFoundError(f"Model file not found: {local_path}")
@@ -97,6 +104,7 @@ def download_model_from_hub(
     token: str,
 ) -> Path:
     from huggingface_hub import hf_hub_download
+
     local_dir = Path(local_dir)
     local_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Downloading {filename} from {repo_id}...")
@@ -115,6 +123,7 @@ def download_model_from_hub(
 
 # ── Inference timing ──────────────────────────────────────────────────────────
 
+
 def benchmark_inference(
     model: Any,
     input_tensor: Any,
@@ -123,6 +132,7 @@ def benchmark_inference(
 ) -> float:
     """Returns mean inference time in milliseconds over n runs."""
     import torch
+
     model.eval()
     device = next(model.parameters()).device
     x = input_tensor.to(device)

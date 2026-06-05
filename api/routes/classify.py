@@ -14,8 +14,6 @@ import torch
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from PIL import Image
 
-logger = logging.getLogger(__name__)
-
 import config as cfg
 from api.prometheus_metrics import (
     cache_hits,
@@ -26,6 +24,8 @@ from api.prometheus_metrics import (
 )
 from api.schemas import ClassifyPrediction, ClassifyResponse
 from src.inference.redis_cache import RedisCache
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

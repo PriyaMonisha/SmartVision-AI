@@ -9,23 +9,15 @@
 #   No trust_remote_code needed. No HF token required for public dataset.
 #   bbox format confirmed via mentor notebook: crop((x, y, x+w, y+h)) produces correct results.
 
-import io
 import logging
-import os
 from pathlib import Path
-from typing import Optional
 
 from PIL import Image
 
 from config import (
     CLASSES,
-    CLASS_TO_IDX,
     CHECKPOINT_FILE,
-    DATA_PROCESSED_DIR,
-    FAST_IMAGES_PER_CLASS,
     HF_CATEGORY_TO_CLASS_IDX,
-    HF_TOKEN,
-    IMAGES_PER_CLASS,
     NUM_CLASSES,
     SELECTED_CLASSES,
     TRAIN_SPLIT,
@@ -38,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 # ── COCO mapping verification ─────────────────────────────────────────────────
 # Rule 28: call this as the first thing in 01_data_acquisition.py
+
 
 def verify_coco_mapping() -> None:
     """Verify SELECTED_CLASSES and HF_CATEGORY_TO_CLASS_IDX are consistent."""
@@ -58,12 +51,15 @@ def verify_coco_mapping() -> None:
         )
     # No duplicate HF IDs
     hf_ids = list(SELECTED_CLASSES.values())
-    assert len(hf_ids) == len(set(hf_ids)), "Duplicate HF category IDs in SELECTED_CLASSES"
+    assert len(hf_ids) == len(set(hf_ids)), (
+        "Duplicate HF category IDs in SELECTED_CLASSES"
+    )
     logger.info(f"COCO mapping verified: {NUM_CLASSES} classes, no duplicates")
     print(f"COCO mapping OK: {NUM_CLASSES} classes, HF 0-indexed IDs, no duplicates")
 
 
 # ── Checkpoint / resume ───────────────────────────────────────────────────────
+
 
 def load_checkpoint() -> dict[str, int]:
     if CHECKPOINT_FILE.exists():
@@ -83,25 +79,31 @@ def save_checkpoint(progress: dict[str, int]) -> None:
 # bbox in HF dataset: [x, y, w, h] — top-left corner + width/height (absolute pixels)
 # Confirmed by mentor notebook: crop((x, y, x+w, y+h)) produces correct object crops
 
+
 def bbox_to_yolo(
-    x: float, y: float, w: float, h: float,
-    img_w: int, img_h: int,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    img_w: int,
+    img_h: int,
     class_idx: int,
 ) -> list[float]:
     """Convert [x, y, w, h] absolute pixels → YOLO [class, x_center, y_center, w, h] normalized."""
     x_center = (x + w / 2.0) / img_w
     y_center = (y + h / 2.0) / img_h
-    w_norm   = w / img_w
-    h_norm   = h / img_h
+    w_norm = w / img_w
+    h_norm = h / img_h
     # Clamp to valid range
     x_center = max(0.0, min(1.0, x_center))
     y_center = max(0.0, min(1.0, y_center))
-    w_norm   = max(0.001, min(1.0, w_norm))
-    h_norm   = max(0.001, min(1.0, h_norm))
+    w_norm = max(0.001, min(1.0, w_norm))
+    h_norm = max(0.001, min(1.0, h_norm))
     return [class_idx, x_center, y_center, w_norm, h_norm]
 
 
 # ── Overlap utilities ─────────────────────────────────────────────────────────
+
 
 def compute_overlap_ratio(target_box: list, other_box: list) -> float:
     """
@@ -127,8 +129,10 @@ def compute_overlap_ratio(target_box: list, other_box: list) -> float:
     ox1, oy1 = other_box[0], other_box[1]
     ox2, oy2 = other_box[0] + other_box[2], other_box[1] + other_box[3]
 
-    inter_x1 = max(tx1, ox1);  inter_y1 = max(ty1, oy1)
-    inter_x2 = min(tx2, ox2);  inter_y2 = min(ty2, oy2)
+    inter_x1 = max(tx1, ox1)
+    inter_y1 = max(ty1, oy1)
+    inter_x2 = min(tx2, ox2)
+    inter_y2 = min(ty2, oy2)
     inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
 
     target_area = target_box[2] * target_box[3]
@@ -165,6 +169,7 @@ def check_person_overlap(
 
 # ── Crop quality gates ────────────────────────────────────────────────────────
 
+
 def check_crop_quality(img: Image.Image, x1: int, y1: int, x2: int, y2: int) -> str:
     """Return 'ok' or a rejection reason string.
 
@@ -185,6 +190,7 @@ def check_crop_quality(img: Image.Image, x1: int, y1: int, x2: int, y2: int) -> 
 
 
 # ── Crop and save classification image ───────────────────────────────────────
+
 
 def save_classification_crop(
     img: Image.Image,
@@ -207,7 +213,7 @@ def save_classification_crop(
     x, y, w, h = bbox
     x1 = max(0, int(x))
     y1 = max(0, int(y))
-    x2 = min(img.width,  int(x + w))
+    x2 = min(img.width, int(x + w))
     y2 = min(img.height, int(y + h))
 
     if x2 <= x1 or y2 <= y1:
@@ -220,7 +226,7 @@ def save_classification_crop(
     try:
         crop = img.crop((x1, y1, x2, y2))
         crop = crop.resize((crop_size, crop_size), Image.LANCZOS)
-        out_dir  = classification_dir / split / class_name
+        out_dir = classification_dir / split / class_name
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"{class_name}_{split}_{img_idx:04d}.jpg"
         crop.save(str(out_path), "JPEG", quality=95)
@@ -232,6 +238,7 @@ def save_classification_crop(
 
 # ── Save detection sample ─────────────────────────────────────────────────────
 
+
 def save_detection_sample(
     img: Image.Image,
     annotations: dict,
@@ -241,8 +248,8 @@ def save_detection_sample(
 ) -> None:
     """Save full image and YOLO-format .txt label for detection task."""
     img_w, img_h = img.size
-    bboxes   = annotations["bbox"]
-    cat_ids  = annotations["category"]
+    bboxes = annotations["bbox"]
+    cat_ids = annotations["category"]
 
     # Build YOLO annotation lines for our 25 classes only
     yolo_lines = []
@@ -272,10 +279,11 @@ def save_detection_sample(
 
 # ── Split helper ──────────────────────────────────────────────────────────────
 
+
 def get_split(img_idx: int, total: int) -> str:
     """Return 'train', 'val', or 'test' based on img_idx position."""
     train_end = int(total * TRAIN_SPLIT)
-    val_end   = train_end + int(total * VAL_SPLIT)
+    val_end = train_end + int(total * VAL_SPLIT)
     if img_idx < train_end:
         return "train"
     elif img_idx < val_end:

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from config import CLASSES, NUM_CLASSES, DATA_PROCESSED_DIR, ARTIFACTS_DIR
+from config import CLASSES, NUM_CLASSES, DATA_PROCESSED_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ def validate_yolo_annotations(labels_dir: Path) -> None:
             class_id = int(parts[0])
             x_c = float(parts[1])
             y_c = float(parts[2])
-            w   = float(parts[3])
-            h   = float(parts[4])
+            w = float(parts[3])
+            h = float(parts[4])
 
             assert 0 <= class_id < NUM_CLASSES, (
                 f"class_id {class_id} out of range [0, {NUM_CLASSES}) in {txt_file}"
@@ -46,14 +46,16 @@ def validate_yolo_annotations(labels_dir: Path) -> None:
             # Use <= 1.0 — bbox_to_yolo clamps to min(1.0,...) so boundary values are valid
             assert 0.0 < x_c <= 1.0, f"x_center {x_c} not in (0,1] in {txt_file}"
             assert 0.0 < y_c <= 1.0, f"y_center {y_c} not in (0,1] in {txt_file}"
-            assert 0.0 < w   <= 1.0, f"width {w} not in (0,1] in {txt_file}"
-            assert 0.0 < h   <= 1.0, f"height {h} not in (0,1] in {txt_file}"
+            assert 0.0 < w <= 1.0, f"width {w} not in (0,1] in {txt_file}"
+            assert 0.0 < h <= 1.0, f"height {h} not in (0,1] in {txt_file}"
             # Catch clearly wrong values (negative or >1)
             assert x_c >= 0 and y_c >= 0, f"Negative center in {txt_file}"
             lines_checked += 1
         files_checked += 1
 
-    print(f"YOLO annotations valid: {files_checked} files, {lines_checked} annotations in {labels_dir.name}/")
+    print(
+        f"YOLO annotations valid: {files_checked} files, {lines_checked} annotations in {labels_dir.name}/"
+    )
 
 
 def create_yolo_data_yaml(detection_dir: Path) -> Path:
@@ -63,10 +65,10 @@ def create_yolo_data_yaml(detection_dir: Path) -> Path:
     """
     detection_dir = Path(detection_dir)
     config = {
-        "path":  str(detection_dir.absolute()),
+        "path": str(detection_dir.absolute()),
         "train": "images/train",
-        "val":   "images/val",
-        "nc":    NUM_CLASSES,
+        "val": "images/val",
+        "nc": NUM_CLASSES,
         "names": {i: cls for i, cls in enumerate(CLASSES)},
     }
     yaml_path = detection_dir / "data.yaml"
@@ -89,7 +91,6 @@ def verify_dataset_structure() -> dict:
     Count images in every split/class folder and return a summary dict.
     Confirms the dataset was built correctly before preprocessing.
     """
-    from config import TRAIN_SPLIT, VAL_SPLIT
 
     cls_dir = DATA_PROCESSED_DIR / "classification"
     det_dir = DATA_PROCESSED_DIR / "detection"
@@ -105,8 +106,11 @@ def verify_dataset_structure() -> dict:
         split_total = 0
         per_class: dict[str, int] = {}
         for cls in CLASSES:
-            count = len(list((cls_dir / split / cls).glob("*.jpg"))) \
-                    if (cls_dir / split / cls).exists() else 0
+            count = (
+                len(list((cls_dir / split / cls).glob("*.jpg")))
+                if (cls_dir / split / cls).exists()
+                else 0
+            )
             per_class[cls] = count
             split_total += count
             if count == 0:
@@ -115,10 +119,16 @@ def verify_dataset_structure() -> dict:
 
     # Detection counts
     for split in ["train", "val"]:
-        imgs = len(list((det_dir / "images" / split).glob("*.jpg"))) \
-               if (det_dir / "images" / split).exists() else 0
-        lbls = len(list((det_dir / "labels" / split).glob("*.txt"))) \
-               if (det_dir / "labels" / split).exists() else 0
+        imgs = (
+            len(list((det_dir / "images" / split).glob("*.jpg")))
+            if (det_dir / "images" / split).exists()
+            else 0
+        )
+        lbls = (
+            len(list((det_dir / "labels" / split).glob("*.txt")))
+            if (det_dir / "labels" / split).exists()
+            else 0
+        )
         result["detection"][split] = {"images": imgs, "labels": lbls}
         if imgs != lbls:
             result["issues"].append(

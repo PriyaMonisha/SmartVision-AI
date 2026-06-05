@@ -17,13 +17,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-import pytest
 
 if TYPE_CHECKING:
     from fastapi.testclient import TestClient
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 def _post_classify(
     client: "TestClient",
@@ -39,6 +39,7 @@ def _post_classify(
 
 
 # ── Cache hit / miss ───────────────────────────────────────────────────────────
+
 
 def test_classify_cache_miss_returns_cached_false(
     app_client: "TestClient", test_image_bytes: bytes
@@ -63,6 +64,7 @@ def test_classify_cache_hit_returns_cached_true(
 
 
 # ── top_k behaviour ────────────────────────────────────────────────────────────
+
 
 def test_classify_top_k_exactly_three(
     app_client: "TestClient", test_image_bytes: bytes
@@ -96,6 +98,7 @@ def test_classify_top_k_zero_is_rejected(
 
 # ── Model name validation ──────────────────────────────────────────────────────
 
+
 def test_classify_unknown_model_rejected(
     app_client: "TestClient", test_image_bytes: bytes
 ) -> None:
@@ -123,6 +126,7 @@ def test_classify_yolo_model_rejected(
 
 # ── 503 when not ready ─────────────────────────────────────────────────────────
 
+
 def test_classify_503_when_models_not_ready(
     app_client: "TestClient", test_image_bytes: bytes
 ) -> None:
@@ -135,6 +139,7 @@ def test_classify_503_when_models_not_ready(
 
 
 # ── Response body correctness ──────────────────────────────────────────────────
+
 
 def test_classify_confidence_scores_sum_to_one(
     app_client: "TestClient", test_image_bytes: bytes
@@ -177,6 +182,7 @@ def test_classify_model_name_echoed_in_response(
 
 
 # ── Input validation ───────────────────────────────────────────────────────────
+
 
 def test_classify_non_image_bytes_rejected(app_client: "TestClient") -> None:
     """Garbage bytes that PIL cannot open → 400."""

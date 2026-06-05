@@ -24,7 +24,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import numpy as np
 import pytest
 
 import config as cfg
@@ -33,7 +32,10 @@ from src.monitoring.drift_detector import DriftDetector
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _make_detector(baseline_json: Path, min_samples: int = cfg.KS_MIN_LIVE_SAMPLES) -> DriftDetector:
+
+def _make_detector(
+    baseline_json: Path, min_samples: int = cfg.KS_MIN_LIVE_SAMPLES
+) -> DriftDetector:
     """Instantiate DriftDetector with a no-op Redis mock."""
     redis_mock = MagicMock()
     redis_mock.available = False
@@ -46,13 +48,16 @@ def _make_detector(baseline_json: Path, min_samples: int = cfg.KS_MIN_LIVE_SAMPL
     )
 
 
-def _fill_buffer(detector: DriftDetector, class_name: str, n: int, value: float = 0.65) -> None:
+def _fill_buffer(
+    detector: DriftDetector, class_name: str, n: int, value: float = 0.65
+) -> None:
     """Record n identical confidence scores for class_name."""
     for _ in range(n):
         detector.record(class_name, value)
 
 
 # ── Instantiation ──────────────────────────────────────────────────────────────
+
 
 def test_detector_loads_correct_number_of_classes(synthetic_baseline: Path) -> None:
     detector = _make_detector(synthetic_baseline)
@@ -62,7 +67,9 @@ def test_detector_loads_correct_number_of_classes(synthetic_baseline: Path) -> N
 def test_detector_loads_correct_sample_count(synthetic_baseline: Path) -> None:
     detector = _make_detector(synthetic_baseline)
     for cls_name, scores in detector._baselines.items():
-        assert scores.shape == (30,), f"{cls_name}: expected 30 scores, got {scores.shape}"
+        assert scores.shape == (30,), (
+            f"{cls_name}: expected 30 scores, got {scores.shape}"
+        )
 
 
 def test_detector_missing_baseline_raises_file_not_found(tmp_path: Path) -> None:
@@ -78,6 +85,7 @@ def test_detector_missing_baseline_raises_file_not_found(tmp_path: Path) -> None
 
 
 # ── Buffer management ──────────────────────────────────────────────────────────
+
 
 def test_record_appends_to_buffer(synthetic_baseline: Path) -> None:
     detector = _make_detector(synthetic_baseline)
@@ -101,10 +109,11 @@ def test_record_unknown_class_is_silently_ignored(synthetic_baseline: Path) -> N
 
 # ── KS test triggering logic ───────────────────────────────────────────────────
 
+
 def test_ks_not_triggered_below_min_samples(synthetic_baseline: Path) -> None:
     """KS test does not run when buffer has fewer than min_samples entries."""
     detector = _make_detector(synthetic_baseline, min_samples=100)
-    _fill_buffer(detector, "person", n=99)   # one below threshold
+    _fill_buffer(detector, "person", n=99)  # one below threshold
     status = detector.get_status()
     assert status["classes"]["person"]["tested"] is False
 
@@ -119,6 +128,7 @@ def test_ks_triggered_at_min_samples_boundary(synthetic_baseline: Path) -> None:
 
 
 # ── Double-gate alert logic ────────────────────────────────────────────────────
+
 
 def test_no_alert_on_same_distribution(synthetic_baseline: Path) -> None:
     """Same distribution → high p-value → no alert (double-gate prevents FP)."""
@@ -145,6 +155,7 @@ def test_alert_fires_on_heavily_shifted_distribution(synthetic_baseline: Path) -
 
 
 # ── get_status() schema ────────────────────────────────────────────────────────
+
 
 def test_get_status_before_records_has_tested_false(synthetic_baseline: Path) -> None:
     detector = _make_detector(synthetic_baseline)

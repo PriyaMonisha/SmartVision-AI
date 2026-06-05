@@ -45,6 +45,6 @@ class EnsembleResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    status: str           # "ok" | "loading"
+    status: str  # "ok" | "loading"
     models_ready: bool
     models_loaded: list[str]

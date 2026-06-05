@@ -33,6 +33,7 @@ from PIL import Image
 
 # ── Mock classification model ──────────────────────────────────────────────────
 
+
 class MockClassificationModel(torch.nn.Module):
     """Real torch.nn.Module returning deterministic 22-class logits.
 
@@ -47,13 +48,14 @@ class MockClassificationModel(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         batch = x.size(0)
         logits = torch.zeros(batch, self.num_classes)
-        logits[:, 0] = 5.0   # class 0 is always top-1
+        logits[:, 0] = 5.0  # class 0 is always top-1
         logits[:, 1] = 2.0
         logits[:, 2] = 1.0
         return logits
 
 
 # ── Session-scoped image bytes (created once for the entire test run) ──────────
+
 
 @pytest.fixture(scope="session")
 def test_image_bytes() -> bytes:
@@ -67,12 +69,14 @@ def test_image_bytes() -> bytes:
 
 # ── Model fixture ──────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_model() -> MockClassificationModel:
     return MockClassificationModel(num_classes=22).eval()
 
 
 # ── Redis mock (for API-layer tests) ──────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_redis() -> MagicMock:
@@ -87,10 +91,12 @@ def mock_redis() -> MagicMock:
 
 # ── Pre-built response dicts (stored format — no "cached" field) ───────────────
 
+
 @pytest.fixture
 def mock_classify_response() -> dict:
     """Stored cache payload for /classify (cached=False already popped on store)."""
     from config import CLASSES
+
     return {
         "predictions": [
             {"class_name": CLASSES[0], "confidence": 0.850000},
@@ -115,12 +121,18 @@ def mock_detect_response() -> dict:
             {
                 "class_name": "dog",
                 "confidence": 0.920000,
-                "x1": 10.0, "y1": 20.0, "x2": 50.0, "y2": 80.0,
+                "x1": 10.0,
+                "y1": 20.0,
+                "x2": 50.0,
+                "y2": 80.0,
             },
             {
                 "class_name": "cat",
                 "confidence": 0.450000,
-                "x1": 60.0, "y1": 10.0, "x2": 90.0, "y2": 40.0,
+                "x1": 60.0,
+                "y1": 10.0,
+                "x2": 90.0,
+                "y2": 40.0,
             },
         ],
         "inference_time_ms": 38.2,
@@ -129,6 +141,7 @@ def mock_detect_response() -> dict:
 
 
 # ── FastAPI TestClient with mocked startup ─────────────────────────────────────
+
 
 @pytest.fixture
 def app_client(
@@ -164,19 +177,18 @@ def app_client(
         }
         app.state.redis = mock_redis
         # eval_transform must return a 3-D tensor so .unsqueeze(0) gives (1,C,H,W)
-        app.state.eval_transform = MagicMock(
-            return_value=torch.zeros(3, 224, 224)
-        )
+        app.state.eval_transform = MagicMock(return_value=torch.zeros(3, 224, 224))
         app.state.drift_detector = MagicMock()
 
     # raise_server_exceptions=False: unhandled server errors become HTTP 500
     # responses rather than being re-raised in the test, so status-code assertions work.
     with TestClient(app, raise_server_exceptions=False) as client:
-        mock_startup()   # override state set by the (mocked) lifespan
+        mock_startup()  # override state set by the (mocked) lifespan
         yield client
 
 
 # ── DriftDetector baseline fixture ────────────────────────────────────────────
+
 
 @pytest.fixture
 def synthetic_baseline(tmp_path: Path) -> Path:
@@ -202,7 +214,8 @@ def synthetic_baseline(tmp_path: Path) -> Path:
         # Confidence scores clipped to [0, 1]
         scores = np.clip(
             np.random.normal(loc=0.6 + mean, scale=0.1, size=30),
-            0.0, 1.0,
+            0.0,
+            1.0,
         ).astype(np.float32)
         np.save(tmp_path / filename, scores)
         metadata["classes"][cls_name] = {"scores_file": filename}
@@ -214,8 +227,10 @@ def synthetic_baseline(tmp_path: Path) -> Path:
 
 # ── fakeredis client for RedisCache unit tests ─────────────────────────────────
 
+
 @pytest.fixture
 def fake_redis_client():
     """FakeStrictRedis — real Redis semantics without a running server."""
     import fakeredis
+
     return fakeredis.FakeStrictRedis(decode_responses=False)

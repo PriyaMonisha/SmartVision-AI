@@ -54,10 +54,11 @@ live_buffer_size = Gauge(
 )
 
 # ── Rate-limit constant ───────────────────────────────────────────────────────
-KS_RUN_EVERY_N: int = cfg.KS_RUN_EVERY_N   # run KS every N new samples per class
+KS_RUN_EVERY_N: int = cfg.KS_RUN_EVERY_N  # run KS every N new samples per class
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
+
 
 def _safe_float(v: object) -> Optional[float]:
     """Return Python float or None for nan/inf (prevents json.dumps failure).
@@ -73,6 +74,7 @@ def _safe_float(v: object) -> Optional[float]:
 
 
 # ── DriftDetector ─────────────────────────────────────────────────────────────
+
 
 class DriftDetector:
     """Per-class KS drift detector for classifier confidence scores.
@@ -97,7 +99,7 @@ class DriftDetector:
     around ``_last_results`` writes.
     """
 
-    MAX_BUFFER = 200   # maximum live scores kept per class
+    MAX_BUFFER = 200  # maximum live scores kept per class
 
     def __init__(
         self,
@@ -128,11 +130,15 @@ class DriftDetector:
         for cls_name, entry in self._baseline_meta.get("classes", {}).items():
             npy_path = baseline_dir / entry["scores_file"]
             if not npy_path.exists():
-                logger.warning(f"Baseline scores missing for '{cls_name}': {npy_path}. Skipping.")
+                logger.warning(
+                    f"Baseline scores missing for '{cls_name}': {npy_path}. Skipping."
+                )
                 continue
             self._baselines[cls_name] = np.load(str(npy_path))
 
-        logger.info(f"DriftDetector: loaded baseline for {len(self._baselines)} classes")
+        logger.info(
+            f"DriftDetector: loaded baseline for {len(self._baselines)} classes"
+        )
 
         # Rolling buffers — deque provides O(1) append and automatic maxlen eviction
         self._buffers: dict[str, deque[float]] = {
@@ -147,20 +153,24 @@ class DriftDetector:
         # so Prometheus has time series from startup (alert rules evaluate empty sets otherwise)
         for cls in cfg.CLASSES:
             ks_drift_statistic.labels(class_name=cls).set(0.0)
-            ks_drift_p_value.labels(class_name=cls).set(1.0)   # 1.0 = "no evidence of drift"
+            ks_drift_p_value.labels(class_name=cls).set(
+                1.0
+            )  # 1.0 = "no evidence of drift"
             ks_drift_alert.labels(class_name=cls).set(0.0)
             live_buffer_size.labels(class_name=cls).set(0.0)
 
         # Step 10-11: Restore buffers from Redis; update Gauges to reflect restored state
         for cls in self._baselines:
             redis_key = f"sv:drift:live:{cls}"
-            restored = redis_client.get_list(redis_key)   # newest-first (LPUSH order)
+            restored = redis_client.get_list(redis_key)  # newest-first (LPUSH order)
             if restored:
                 # Reverse to chronological order before extending deque so that
                 # maxlen eviction removes the oldest item (not the most recently restored)
                 self._buffers[cls].extend(reversed(restored))
                 live_buffer_size.labels(class_name=cls).set(len(self._buffers[cls]))
-                logger.info(f"  Restored {len(self._buffers[cls])} scores for '{cls}' from Redis")
+                logger.info(
+                    f"  Restored {len(self._buffers[cls])} scores for '{cls}' from Redis"
+                )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -171,21 +181,26 @@ class DriftDetector:
         Cache hits MUST NOT call record() — cached responses double-count scores.
         """
         if class_name not in self._baselines:
-            return   # silently skip "unknown" and any class without baseline
+            return  # silently skip "unknown" and any class without baseline
 
-        confidence = max(0.0, min(1.0, float(confidence)))   # clamp to [0, 1]
+        confidence = max(0.0, min(1.0, float(confidence)))  # clamp to [0, 1]
 
         self._buffers[class_name].append(confidence)
 
         # Push to Redis for cross-restart persistence (best-effort)
         if self._redis.available:
-            self._redis.push_to_list(f"sv:drift:live:{class_name}", confidence, self.MAX_BUFFER)
+            self._redis.push_to_list(
+                f"sv:drift:live:{class_name}", confidence, self.MAX_BUFFER
+            )
 
         buf_len = len(self._buffers[class_name])
         live_buffer_size.labels(class_name=class_name).set(buf_len)
 
         self._counters[class_name] += 1
-        if buf_len >= self._min_samples and self._counters[class_name] % KS_RUN_EVERY_N == 0:
+        if (
+            buf_len >= self._min_samples
+            and self._counters[class_name] % KS_RUN_EVERY_N == 0
+        ):
             self._run_ks(class_name, list(self._buffers[class_name]))
 
     def get_status(self) -> dict:
@@ -199,21 +214,23 @@ class DriftDetector:
             buf_len = len(self._buffers[cls])
             result = self._last_results.get(cls)
             classes_out[cls] = {
-                "buffer_size":          buf_len,
+                "buffer_size": buf_len,
                 "min_samples_required": self._min_samples,
-                "tested":               result is not None,
+                "tested": result is not None,
                 **(result if result is not None else {}),
             }
 
         alerting = [cls for cls, r in self._last_results.items() if r.get("is_alert")]
         return {
             "summary": {
-                "total_classes":     len(self._baselines),
-                "classes_with_data": sum(1 for b in self._buffers.values() if len(b) > 0),
-                "classes_tested":    len(self._last_results),
-                "classes_alerting":  len(alerting),
-                "baseline_model":    self._baseline_meta.get("model_used", "mobilenet"),
-                "baseline_split":    self._baseline_meta.get("split_used", "val"),
+                "total_classes": len(self._baselines),
+                "classes_with_data": sum(
+                    1 for b in self._buffers.values() if len(b) > 0
+                ),
+                "classes_tested": len(self._last_results),
+                "classes_alerting": len(alerting),
+                "baseline_model": self._baseline_meta.get("model_used", "mobilenet"),
+                "baseline_split": self._baseline_meta.get("split_used", "val"),
             },
             "classes": classes_out,
         }
@@ -246,17 +263,21 @@ class DriftDetector:
         safe_pval = _safe_float(pval)
 
         self._last_results[class_name] = {
-            "ks_stat":    safe_stat,
-            "p_value":    safe_pval,
-            "is_alert":   is_alert,
-            "n_live":     int(len(live_scores)),
+            "ks_stat": safe_stat,
+            "p_value": safe_pval,
+            "is_alert": is_alert,
+            "n_live": int(len(live_scores)),
             "n_baseline": int(len(baseline)),
-            "tested_at":  float(time.time()),
+            "tested_at": float(time.time()),
         }
 
         # Fall back to neutral Gauge values if stat/pval are nan/inf
-        ks_drift_statistic.labels(class_name=class_name).set(safe_stat if safe_stat is not None else 0.0)
-        ks_drift_p_value.labels(class_name=class_name).set(safe_pval if safe_pval is not None else 1.0)
+        ks_drift_statistic.labels(class_name=class_name).set(
+            safe_stat if safe_stat is not None else 0.0
+        )
+        ks_drift_p_value.labels(class_name=class_name).set(
+            safe_pval if safe_pval is not None else 1.0
+        )
         ks_drift_alert.labels(class_name=class_name).set(1.0 if is_alert else 0.0)
 
         if is_alert:

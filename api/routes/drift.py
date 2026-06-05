@@ -15,7 +15,7 @@ router = APIRouter()
 
 class ClassDriftStatus(BaseModel):
     buffer_size: int
-    min_samples_required: int = 100   # default matches config default
+    min_samples_required: int = 100  # default matches config default
     tested: bool
     ks_stat: Optional[float] = None
     p_value: Optional[float] = None

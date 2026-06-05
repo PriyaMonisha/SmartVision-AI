@@ -21,8 +21,8 @@ router = APIRouter()
 
 # Weights proportional to test accuracy (ResNet50=65.5%, Efficientnet=58.9%, MobileNet=56.7%)
 _ENSEMBLE_MODELS = ["resnet50", "efficientnet", "mobilenet"]
-_RAW_WEIGHTS     = {"resnet50": 65.5, "efficientnet": 58.9, "mobilenet": 56.7}
-_TOTAL           = sum(_RAW_WEIGHTS.values())
+_RAW_WEIGHTS = {"resnet50": 65.5, "efficientnet": 58.9, "mobilenet": 56.7}
+_TOTAL = sum(_RAW_WEIGHTS.values())
 ENSEMBLE_WEIGHTS = {k: v / _TOTAL for k, v in _RAW_WEIGHTS.items()}
 
 
@@ -43,21 +43,21 @@ async def ensemble_classify(
     image_bytes = await file.read()
 
     # Cache key combines all loaded model hashes
-    hashes      = request.app.state.model_hashes
-    combo_hash  = "_".join(hashes.get(m, "") for m in available)
+    hashes = request.app.state.model_hashes
+    combo_hash = "_".join(hashes.get(m, "") for m in available)
     cache: RedisCache = request.app.state.redis
-    cache_key   = RedisCache.make_classify_key(image_bytes, f"ensemble_{combo_hash}", "")
+    cache_key = RedisCache.make_classify_key(image_bytes, f"ensemble_{combo_hash}", "")
 
     cached_data = cache.get(cache_key)
     if cached_data is not None:
         cached_data.pop("cached", None)
         return EnsembleResponse(**cached_data, cached=True)
 
-    image  = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     tensor = request.app.state.eval_transform(image).unsqueeze(0)
 
     # Run each model and collect weighted softmax
-    t0           = time.perf_counter()
+    t0 = time.perf_counter()
     per_model: dict[str, list[ClassifyPrediction]] = {}
     weighted_sum = torch.zeros(cfg.NUM_CLASSES)
 
@@ -69,7 +69,7 @@ async def ensemble_classify(
         w = ENSEMBLE_WEIGHTS.get(model_name, 1.0 / len(available))
         weighted_sum += w * probs
 
-        k    = min(top_k, cfg.NUM_CLASSES)
+        k = min(top_k, cfg.NUM_CLASSES)
         top_probs, top_idxs = probs.topk(k)
         per_model[model_name] = [
             ClassifyPrediction(

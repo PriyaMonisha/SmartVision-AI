@@ -10,9 +10,6 @@ from typing import Optional
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
-# Windows requires num_workers=0 (no fork); Linux/Colab can use 2 workers
-_NUM_WORKERS = 0 if platform.system() == "Windows" else 2
-
 from config import (
     CLASS_TO_IDX,
     CLASSES,
@@ -22,6 +19,9 @@ from config import (
     TRAIN_SPLIT,
     VAL_SPLIT,
 )
+
+# Windows requires num_workers=0 (no fork); Linux/Colab can use 2 workers
+_NUM_WORKERS = 0 if platform.system() == "Windows" else 2
 
 logger = logging.getLogger(__name__)
 
@@ -76,14 +76,14 @@ def create_stratified_split(
 
     for class_idx, items in per_class.items():
         rng.shuffle(items)
-        n         = len(items)
+        n = len(items)
         train_end = round(n * TRAIN_SPLIT)
-        val_end   = round(n * (TRAIN_SPLIT + VAL_SPLIT))
+        val_end = round(n * (TRAIN_SPLIT + VAL_SPLIT))
         splits["train"].extend(items[:train_end])
         splits["val"].extend(items[train_end:val_end])
         splits["test"].extend(items[val_end:])
 
-    all_assigned   = splits["train"] + splits["val"] + splits["test"]
+    all_assigned = splits["train"] + splits["val"] + splits["test"]
     assigned_paths = [str(p) for p, _ in all_assigned]
     assert len(assigned_paths) == len(all_samples), (
         f"Split dropped {len(all_samples) - len(assigned_paths)} images. "
@@ -93,11 +93,13 @@ def create_stratified_split(
         f"Duplicate paths: {len(assigned_paths) - len(set(assigned_paths))} duplicates"
     )
     train_set = {str(p) for p, _ in splits["train"]}
-    val_set   = {str(p) for p, _ in splits["val"]}
-    test_set  = {str(p) for p, _ in splits["test"]}
-    assert not (train_set & val_set),  f"Train/val overlap: {len(train_set & val_set)}"
-    assert not (train_set & test_set), f"Train/test overlap: {len(train_set & test_set)}"
-    assert not (val_set   & test_set), f"Val/test overlap: {len(val_set & test_set)}"
+    val_set = {str(p) for p, _ in splits["val"]}
+    test_set = {str(p) for p, _ in splits["test"]}
+    assert not (train_set & val_set), f"Train/val overlap: {len(train_set & val_set)}"
+    assert not (train_set & test_set), (
+        f"Train/test overlap: {len(train_set & test_set)}"
+    )
+    assert not (val_set & test_set), f"Val/test overlap: {len(val_set & test_set)}"
 
     logger.info(
         f"create_stratified_split: train={len(splits['train'])} "
@@ -122,12 +124,14 @@ class SmartVisionDataset(Dataset):
     ) -> None:
         if split not in ("train", "val", "test"):
             raise ValueError(f"split must be 'train', 'val', or 'test'; got {split!r}")
-        self.split     = split
+        self.split = split
         self.transform = transform
-        self.root      = Path(root) if root else DATA_PROCESSED_DIR / "classification"
+        self.root = Path(root) if root else DATA_PROCESSED_DIR / "classification"
 
         if samples is not None:
-            self.samples = list(samples)   # shallow copy — (Path, int) tuples are immutable
+            self.samples = list(
+                samples
+            )  # shallow copy — (Path, int) tuples are immutable
             logger.info(
                 f"SmartVisionDataset [{self.split}]: {len(self.samples)} samples (pre-split)"
             )
@@ -179,18 +183,21 @@ def get_dataloaders(
     batch_size = MODEL_CONFIGS[model_name]["batch"]
 
     if use_random_split:
-        root       = DATA_PROCESSED_DIR / "classification"
+        root = DATA_PROCESSED_DIR / "classification"
         all_splits = create_stratified_split(root)
-        train_ds   = SmartVisionDataset("train", transform=train_transform,
-                                        samples=all_splits["train"])
-        val_ds     = SmartVisionDataset("val",   transform=eval_transform,
-                                        samples=all_splits["val"])
-        test_ds    = SmartVisionDataset("test",  transform=eval_transform,
-                                        samples=all_splits["test"])
+        train_ds = SmartVisionDataset(
+            "train", transform=train_transform, samples=all_splits["train"]
+        )
+        val_ds = SmartVisionDataset(
+            "val", transform=eval_transform, samples=all_splits["val"]
+        )
+        test_ds = SmartVisionDataset(
+            "test", transform=eval_transform, samples=all_splits["test"]
+        )
     else:
         train_ds = SmartVisionDataset("train", transform=train_transform)
-        val_ds   = SmartVisionDataset("val",   transform=eval_transform)
-        test_ds  = SmartVisionDataset("test",  transform=eval_transform)
+        val_ds = SmartVisionDataset("val", transform=eval_transform)
+        test_ds = SmartVisionDataset("test", transform=eval_transform)
 
     if fast_mode and len(train_ds) < 50:
         logger.warning(
@@ -199,16 +206,26 @@ def get_dataloaders(
         )
 
     train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True,
-        num_workers=_NUM_WORKERS, pin_memory=True, drop_last=True,
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=_NUM_WORKERS,
+        pin_memory=True,
+        drop_last=True,
     )
     val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False,
-        num_workers=_NUM_WORKERS, pin_memory=True,
+        val_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=_NUM_WORKERS,
+        pin_memory=True,
     )
     test_loader = DataLoader(
-        test_ds, batch_size=batch_size, shuffle=False,
-        num_workers=_NUM_WORKERS, pin_memory=True,
+        test_ds,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=_NUM_WORKERS,
+        pin_memory=True,
     )
 
     logger.info(

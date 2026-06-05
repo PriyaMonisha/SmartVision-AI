@@ -14,7 +14,12 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from PIL import Image, ImageOps
 
 import config as cfg
-from api.prometheus_metrics import cache_hits, cache_misses, detect_latency, detect_requests
+from api.prometheus_metrics import (
+    cache_hits,
+    cache_misses,
+    detect_latency,
+    detect_requests,
+)
 from api.schemas import DetectBBox, DetectResponse
 from src.inference.redis_cache import RedisCache
 
@@ -33,7 +38,9 @@ async def detect_objects(
     # Explicit None check — YOLO may have failed to load gracefully
     yolo = request.app.state.models.get("yolo")
     if yolo is None:
-        raise HTTPException(status_code=503, detail="Detection model not loaded. Check server logs.")
+        raise HTTPException(
+            status_code=503, detail="Detection model not loaded. Check server logs."
+        )
 
     image_bytes = await file.read()
 

@@ -39,13 +39,15 @@ class RedisCache:
                 self._client.ping()
             else:
                 import redis as redis_lib
+
                 self._client = redis_lib.Redis(
                     host=host,
                     port=port,
-                    password=password or None,       # None = no auth (empty string means no auth)
+                    password=password
+                    or None,  # None = no auth (empty string means no auth)
                     socket_connect_timeout=timeout,  # fail fast — not 20-30s OS timeout
                     socket_timeout=timeout,
-                    decode_responses=False,          # raw bytes for json.loads
+                    decode_responses=False,  # raw bytes for json.loads
                 )
                 self._client.ping()
             self._available = True
@@ -112,7 +114,9 @@ class RedisCache:
             return []
 
     @staticmethod
-    def make_classify_key(image_bytes: bytes, model_name: str, model_hash: str = "") -> str:
+    def make_classify_key(
+        image_bytes: bytes, model_name: str, model_hash: str = ""
+    ) -> str:
         """32-char SHA256 prefix (128-bit) — negligible birthday collision probability."""
         img = hashlib.sha256(image_bytes).hexdigest()[:32]
         return f"sv:classify:{img}:{model_name}:{model_hash}"
