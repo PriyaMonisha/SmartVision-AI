@@ -35,6 +35,15 @@ class DetectResponse(BaseModel):
     cached: bool
 
 
+class EnsembleResponse(BaseModel):
+    ensemble_predictions: list[ClassifyPrediction]
+    per_model: dict[str, list[ClassifyPrediction]]
+    models_used: list[str]
+    weights: dict[str, float]
+    inference_time_ms: float
+    cached: bool
+
+
 class HealthResponse(BaseModel):
     status: str           # "ok" | "loading"
     models_ready: bool

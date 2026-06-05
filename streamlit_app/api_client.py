@@ -22,6 +22,7 @@ FASTAPI_URL: str = config.FASTAPI_URL or "http://localhost:8000"
 # ── Per-endpoint timeouts (seconds) ───────────────────────────────────────────
 HEALTH_TIMEOUT   = 3    # liveness check — fail fast
 CLASSIFY_TIMEOUT = 30   # cold CPU inference can be slow
+ENSEMBLE_TIMEOUT = 90   # 3 models in sequence on CPU
 DETECT_TIMEOUT   = 45   # YOLO forward pass + NMS on CPU
 DRIFT_TIMEOUT    = 5    # status read should always be fast
 
@@ -85,6 +86,21 @@ def classify(img_bytes: bytes, filename: str, model_name: str, top_k: int) -> di
         return resp.json()
     except Exception as e:
         _handle_error(e, "/classify")
+
+
+def ensemble(img_bytes: bytes, filename: str, top_k: int) -> dict:
+    """POST /ensemble — weighted average of ResNet50 + EfficientNetB0 + MobileNetV2."""
+    try:
+        resp = _session().post(
+            f"{FASTAPI_URL}/ensemble",
+            files={"file": (filename, img_bytes, "image/jpeg")},
+            data={"top_k": str(top_k)},
+            timeout=ENSEMBLE_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        _handle_error(e, "/ensemble")
 
 
 def detect(img_bytes: bytes, filename: str, conf_threshold: float) -> dict:

@@ -17,7 +17,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 
 import config as cfg
-from api.routes import classify, detect, drift, health, metrics
+from api.routes import classify, detect, drift, ensemble, health, metrics
 from src.data.augmentor import get_eval_transforms
 from src.inference.model_loader import load_all_models
 from src.inference.redis_cache import RedisCache
@@ -93,6 +93,7 @@ app = FastAPI(
 
 app.include_router(health.router)
 app.include_router(classify.router)
+app.include_router(ensemble.router)
 app.include_router(detect.router)
 app.include_router(drift.router)
 app.include_router(metrics.router)
