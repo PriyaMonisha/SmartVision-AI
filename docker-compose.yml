@@ -29,14 +29,25 @@ services:
     restart: unless-stopped
     networks: [smartvision]
     volumes: [redis_data:/data]
+    # REDIS_PASSWORD empty = no auth (local dev). Set in .env for production.
+    # Conditional: if REDIS_PASSWORD is set, require it; otherwise open.
+    command: >
+      sh -c "if [ -n \"$$REDIS_PASSWORD\" ];
+             then redis-server --requirepass $$REDIS_PASSWORD;
+             else redis-server; fi"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        - "CMD-SHELL"
+        - >
+          if [ -n "$$REDIS_PASSWORD" ];
+          then redis-cli -a $$REDIS_PASSWORD ping;
+          else redis-cli ping; fi
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-    # Note: no auth for local dev.
-    # Production: add: command: redis-server --requirepass ${REDIS_PASSWORD}
 
   # ── FastAPI ────────────────────────────────────────────────────────────────
   fastapi:
@@ -57,6 +68,7 @@ services:
       # HF_TOKEN / HF_REPO_ID: set in .env (see .env.example)
       HF_TOKEN: ${HF_TOKEN:-}
       HF_REPO_ID: ${HF_REPO_ID:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ports:
       - "8000:8000"
     depends_on:

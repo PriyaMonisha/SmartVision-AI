@@ -14,9 +14,10 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 
 import config as cfg
+from api.prometheus_metrics import http_errors, models_loaded
 from api.routes import classify, detect, drift, ensemble, health, metrics
 from src.data.augmentor import get_eval_transforms
 from src.inference.model_loader import load_all_models
@@ -47,13 +48,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.models = models
         app.state.model_hashes = hashes
         app.state.models_ready = True
+        models_loaded.set(1)
         logger.info(f"Models ready: {list(models.keys())}")
     except Exception as e:
         logger.error(f"Model loading failed: {e}")
         # models_ready stays False — /health returns 503 on every request
 
     # Redis — 1s socket_connect_timeout; disables cache gracefully if Redis is down
-    app.state.redis = RedisCache(host=cfg.REDIS_HOST, port=cfg.REDIS_PORT)
+    app.state.redis = RedisCache(host=cfg.REDIS_HOST, port=cfg.REDIS_PORT, password=cfg.REDIS_PASSWORD)
 
     # Build eval transform once at startup — not per-request (avoids per-call allocation)
     app.state.eval_transform = get_eval_transforms(image_size=cfg.IMAGE_SIZE)
@@ -90,6 +92,19 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def count_http_errors(request: Request, call_next) -> Response:
+    """Increment http_errors counter for any 4xx/5xx response."""
+    response = await call_next(request)
+    if response.status_code >= 400:
+        endpoint = request.url.path
+        http_errors.labels(
+            status_code=str(response.status_code),
+            endpoint=endpoint,
+        ).inc()
+    return response
 
 app.include_router(health.router)
 app.include_router(classify.router)

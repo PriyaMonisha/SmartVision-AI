@@ -120,7 +120,8 @@ class SmartVisionDataset(Dataset):
         root: Optional[Path] = None,
         samples: Optional[list] = None,
     ) -> None:
-        assert split in ("train", "val", "test"), f"Invalid split: {split}"
+        if split not in ("train", "val", "test"):
+            raise ValueError(f"split must be 'train', 'val', or 'test'; got {split!r}")
         self.split     = split
         self.transform = transform
         self.root      = Path(root) if root else DATA_PROCESSED_DIR / "classification"

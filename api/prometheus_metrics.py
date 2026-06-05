@@ -4,7 +4,7 @@
 #           Rule 30: /metrics endpoint returns CONTENT_TYPE_LATEST (text/plain).
 #           Rule 33: label name "class_name" used consistently here and in Section 9 rules.
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Histogram, Gauge
 
 # Classification metrics
 # 22 classes × 2 models = 44 max label combinations — acceptable cardinality.
@@ -49,4 +49,19 @@ cache_misses = Counter(
     "smartvision_cache_misses_total",
     "Redis cache misses by endpoint",
     ["endpoint"],
+)
+
+# HTTP error rate — counts 4xx/5xx responses by status code and endpoint.
+# Enables Grafana alerting on error spikes (e.g., >5% 500s triggers page).
+http_errors = Counter(
+    "smartvision_http_errors_total",
+    "HTTP error responses by status code and endpoint",
+    ["status_code", "endpoint"],
+)
+
+# Models-loaded gauge — 0 during startup, 1 when all expected models are ready.
+# Alert rule: smartvision_models_loaded == 0 for > 3 minutes → startup failure.
+models_loaded = Gauge(
+    "smartvision_models_loaded",
+    "1 when all models loaded successfully, 0 during startup or on load failure",
 )

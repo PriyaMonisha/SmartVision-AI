@@ -21,7 +21,15 @@ class RedisCache:
     Cache miss or error: returns None — inference runs normally.
     """
 
-    def __init__(self, host: str = "redis", port: int = 6379, timeout: float = 1.0, *, _client=None) -> None:
+    def __init__(
+        self,
+        host: str = "redis",
+        port: int = 6379,
+        password: str = "",
+        timeout: float = 1.0,
+        *,
+        _client=None,
+    ) -> None:
         self._available = False
         self._client = None
         try:
@@ -34,6 +42,7 @@ class RedisCache:
                 self._client = redis_lib.Redis(
                     host=host,
                     port=port,
+                    password=password or None,       # None = no auth (empty string means no auth)
                     socket_connect_timeout=timeout,  # fail fast — not 20-30s OS timeout
                     socket_timeout=timeout,
                     decode_responses=False,          # raw bytes for json.loads

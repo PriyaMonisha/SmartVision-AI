@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     fastapi_url: str = "http://localhost:8000"
     redis_host: str = "redis"
     redis_port: int = 6379
+    redis_password: str = ""   # empty = no auth (dev); set REDIS_PASSWORD in .env for production
     # FAST_MODE reads from env var for Docker/production.
     # In notebooks: override as LOCAL variable, pass as function param (never mutate this).
     fast_mode: bool = True
@@ -24,12 +25,13 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-FAST_MODE   = settings.fast_mode
-FASTAPI_URL = settings.fastapi_url
-HF_TOKEN    = settings.hf_token
-HF_REPO_ID  = settings.hf_repo_id
-REDIS_HOST  = settings.redis_host
-REDIS_PORT  = settings.redis_port
+FAST_MODE      = settings.fast_mode
+FASTAPI_URL    = settings.fastapi_url
+HF_TOKEN       = settings.hf_token
+HF_REPO_ID     = settings.hf_repo_id
+REDIS_HOST     = settings.redis_host
+REDIS_PORT     = settings.redis_port
+REDIS_PASSWORD = settings.redis_password
 
 # ── Reproducibility ──────────────────────────────────────────────────────────
 RANDOM_STATE = 42

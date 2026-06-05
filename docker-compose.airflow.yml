@@ -22,7 +22,7 @@ x-airflow-common: &airflow-common
     - airflow_logs:/opt/airflow/logs
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_DB_USER:-airflow}:${AIRFLOW_DB_PASSWORD:?AIRFLOW_DB_PASSWORD must be set in .env}@airflow-postgres/airflow
     # :? syntax fails at compose up if variable is unset — prevents silent Fernet errors
     AIRFLOW__CORE__FERNET_KEY: '${AIRFLOW_FERNET_KEY:?AIRFLOW_FERNET_KEY must be set in .env. Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"}'
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_FERNET_KEY}   # reuse for dev; separate in prod
@@ -57,8 +57,8 @@ services:
     restart: unless-stopped
     networks: [smartvision]
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
+      POSTGRES_USER: ${AIRFLOW_DB_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD:?AIRFLOW_DB_PASSWORD must be set in .env}
       POSTGRES_DB: airflow
     volumes:
       - airflow_postgres_data:/var/lib/postgresql/data
@@ -82,8 +82,8 @@ services:
       - |
         airflow db migrate &&
         airflow users create \
-          --username admin \
-          --password admin \
+          --username ${AIRFLOW_ADMIN_USER:-admin} \
+          --password ${AIRFLOW_ADMIN_PASSWORD:?AIRFLOW_ADMIN_PASSWORD must be set in .env} \
           --firstname Admin \
           --lastname User \
           --role Admin \

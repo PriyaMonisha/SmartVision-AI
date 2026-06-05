@@ -232,12 +232,6 @@ def train(
             f"val_acc={val_metrics['accuracy']:.4f} | "
             f"val_f1={val_metrics['f1']:.4f} | {elapsed:.1f}s"
         )
-        print(
-            f"Epoch {epoch:3d}/{epochs}  "
-            f"train_acc={train_metrics['accuracy']:.4f}  "
-            f"val_acc={val_metrics['accuracy']:.4f}  "
-            f"val_f1={val_metrics['f1']:.4f}  ({elapsed:.0f}s)"
-        )
 
         if val_metrics["accuracy"] > best_val_acc:
             best_val_acc = val_metrics["accuracy"]
@@ -256,7 +250,7 @@ def train(
         else:
             patience_count += 1
             if patience_count >= patience:
-                print(f"Early stopping at epoch {epoch} (patience={patience})")
+                logger.info(f"[{model_name}] Early stopping at epoch {epoch} (patience={patience})")
                 break
 
     # Reload best checkpoint so caller receives best model, not last epoch

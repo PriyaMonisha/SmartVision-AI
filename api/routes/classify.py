@@ -6,12 +6,15 @@
 from __future__ import annotations
 
 import io
+import logging
 import time
 from typing import Annotated
 
 import torch
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 import config as cfg
 from api.prometheus_metrics import (
