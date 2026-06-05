@@ -863,3 +863,23 @@ if remaining:
 **Q. Why use `service_completed_successfully` for the `airflow-init` dependency?**
 
 > `airflow-init` is a one-shot container: it runs `airflow db migrate && airflow users create`, exits with code 0, and is done. `condition: service_healthy` waits for a running health check to pass — but an exited container never runs health checks again. The webserver would wait indefinitely for a container that will never become healthy. `condition: service_completed_successfully` is the correct condition for init containers: it's satisfied the moment the container exits with code 0. This requires Docker Compose v2.1+ and Docker Engine 20.10.7+, which is standard on any system running Docker Desktop in 2024.
+
+---
+
+## Section 15 — Bonus Features: Ensemble & Webcam Detection
+
+**Q. You implemented a model ensemble. How does it work and why does it improve accuracy?**
+
+> The `/ensemble` endpoint runs ResNet50, EfficientNetB0, and MobileNetV2 in sequence and combines their softmax probability vectors using a weighted average. The weights are proportional to each model's test accuracy — ResNet50 gets 36.2%, EfficientNetB0 32.5%, MobileNetV2 31.3%. The intuition is: if one model is uncertain about a class (low confidence), the other two can overrule it. Ensemble works because the three models make different errors — they learned different features from the same data. Averaging their probability distributions smooths out individual model biases. The practical gain in our case is modest (1-3pp) because all three models share the same training data ceiling of ~100 images/class. Ensemble shines when models are diverse — different architectures OR different training data.
+
+**Q. Why weighted average instead of majority vote or simple average?**
+
+> Majority vote only uses the top-1 prediction from each model and discards the confidence information. If ResNet50 says "cat (92%)" and MobileNet says "dog (51%)", majority vote treats these as equal votes. Weighted softmax average uses the full probability distribution — ResNet50's high-confidence cat signal dominates correctly. Simple average gives equal weight to a weaker model (56.7%) and a stronger one (65.5%), which slightly degrades overall performance. Accuracy-proportional weights are a principled choice: models that performed better on the test set should have more say in the ensemble prediction.
+
+**Q. You added webcam detection. How does real-time inference work in Streamlit?**
+
+> I used `st.camera_input()`, which shows a browser webcam widget and returns the captured frame as bytes when the user clicks "Take Photo". Those bytes go directly to `POST /detect`, and the YOLOv8n response with bounding boxes is drawn onto the image with PIL and displayed. There's also a "Continuous mode" toggle — when enabled, the page calls `st.rerun()` after each detection, automatically triggering the next capture. It's pseudo-real-time: the loop is ~2-4 seconds per frame on CPU, limited by YOLO inference time. True real-time (30 FPS) would need `streamlit-webrtc` which processes a WebRTC video stream server-side, but it requires a TURN/STUN server on cloud deployments and significantly increases complexity. For a capstone demo, snapshot-mode detection clearly demonstrates the capability without that overhead.
+
+**Q. You deployed to HuggingFace Spaces. What works there and what doesn't?**
+
+> HuggingFace Spaces free tier runs only Streamlit — it starts the Streamlit process and that's it. There's no Redis, no FastAPI, no background services. The pages that work are the static ones: Model Comparison (loads from JSON artifacts), EDA Insights (static charts), and the About page. The pages that need FastAPI — Classify, Detect, Drift Monitor, Webcam — show an informational "Demo mode" banner and a clear error when you try to call the API. I detect HF Spaces via `os.environ.get("SPACE_ID")`, which HF sets automatically, and show a context-appropriate message. The full production stack — including inference — runs locally with `docker compose up`. This split is intentional: HF Spaces is for project showcase and CV link, Docker is for actual demo.
