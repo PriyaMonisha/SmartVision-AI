@@ -24,7 +24,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
     # :? syntax fails at compose up if variable is unset — prevents silent Fernet errors
-    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?AIRFLOW_FERNET_KEY must be set in .env. Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"}
+    AIRFLOW__CORE__FERNET_KEY: '${AIRFLOW_FERNET_KEY:?AIRFLOW_FERNET_KEY must be set in .env. Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"}'
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_FERNET_KEY}   # reuse for dev; separate in prod
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"   # keeps DAG list clean
