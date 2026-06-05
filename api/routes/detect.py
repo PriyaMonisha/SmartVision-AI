@@ -11,7 +11,7 @@ from typing import Annotated
 
 import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from PIL import Image
+from PIL import Image, ImageOps
 
 import config as cfg
 from api.prometheus_metrics import cache_hits, cache_misses, detect_latency, detect_requests
@@ -48,8 +48,11 @@ async def detect_objects(
 
     cache_misses.labels(endpoint="detect").inc()
 
-    # PIL → numpy HWC RGB uint8 — version-stable YOLO input (not raw PIL)
+    # PIL → numpy HWC RGB uint8 — version-stable YOLO input (not raw PIL).
+    # EXIF transpose ensures phone photos are correctly oriented before YOLO inference,
+    # so returned bbox coordinates match the orientation seen by the Streamlit display.
     pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    pil_image = ImageOps.exif_transpose(pil_image)
     img_array = np.array(pil_image)
 
     t0 = time.perf_counter()
