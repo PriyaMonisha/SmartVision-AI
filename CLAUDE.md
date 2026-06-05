@@ -41,13 +41,13 @@ At the end of EVERY section, before declaring it complete:
 ---
 
 ## Current Status
-**Active Section:** Section 11 🔄 (Docker Compose + Grafana + Airflow Scaffolding — next)
-**Last Working File:** src/monitoring/drift_detector.py, notebooks/08_drift_prometheus.py
-**Last Decision Made:** Section 9 complete. Double-gate KS alert (stat > 0.10 AND p < 0.05)
-eliminates ~95% false-positive rate from n=30 baseline. Rate-limited KS_RUN_EVERY_N=10
-prevents event loop blocking at 100 req/s. Redis list buffer + deque fallback. All 22 Gauge
-series initialized at startup so Prometheus has time series from day 1. _safe_float() guards
-nan/inf from zero-variance KS inputs. DriftDetector in lifespan, GET /drift/status endpoint.
+**Active Section:** Section 12 🔄 (CI + Tests + HuggingFace Deployment — next)
+**Last Working File:** docker-compose.yml, docker-compose.airflow.yml, dags/retrain_drift_dag.py
+**Last Decision Made:** Section 11 complete. 27 bugs pre-fixed in plan review (6 critical, 9 high).
+Key decisions: libgl1 not libgl1-mesa-glx (Bookworm), wget not curl for prom/prometheus healthcheck,
+access:proxy in Grafana datasource, clamp_min for cache hit rate, service_completed_successfully
+for airflow-init, AirflowSkipException at module level, requests import inside function for DAG
+parse speed, image:smartvision-app:latest shared between fastapi+streamlit services.
 Test B: stat=0.02, p=1.00 (no FP). Test C: 3/3 alerts (cup/chair/bottle, +0.3 shift, stat 0.60-0.82).
 
 **Section 5 Training Status — Round 1 (69 img/class, DOCUMENTED):**
@@ -149,12 +149,23 @@ When you see a POST-COMMIT REMINDER, do ALL THREE immediately:
   - streamlit_app/plotting.py: accuracy_bar, speed_accuracy_scatter (normalised bubbles), drift_gauge
   - api/routes/detect.py: ImageOps.exif_transpose before YOLO inference
 
+- [x] Section 11: Docker Compose + Grafana + Airflow Scaffolding ✅
+  - Dockerfile: python:3.11-slim, libgl1 (Bookworm), curl, non-root appuser (uid 1000)
+  - docker-compose.yml: 5 services, smartvision network (name:), shared image tag, grafana_data volume
+  - Service health chain: redis → fastapi (180s start_period) → streamlit; prometheus → grafana
+  - Prometheus healthcheck: wget (prom/prometheus has no curl); grafana depends prometheus service_healthy
+  - monitoring/prometheus.yml: scrapes fastapi:8000/metrics + self; mounts alert rules
+  - Grafana: zero-manual-setup via provisioning/ (access:proxy CRITICAL), schemaVersion=39
+  - smartvision.json: 4 panels; clamp_min for cache hit rate; per-panel uid; legendFormat={{job}}
+  - docker-compose.airflow.yml: YAML anchor, service_completed_successfully, external network
+  - dags/retrain_drift_dag.py: AirflowSkipException (module-level), PythonOperator+requests,
+    import requests inside fn (DAG parse speed), trigger_rule=all_done on notify
+
 ### In Progress 🔄
 
-- [ ] Section 11: Docker Compose + Grafana + Airflow Scaffolding  ← NEXT
+- [ ] Section 12: CI + Tests + HuggingFace Deployment  ← NEXT
 
 ### Remaining 📋
-- [ ] Section 11: Docker Compose + Grafana + Airflow Scaffolding
 - [ ] Section 12: CI + Tests + HuggingFace Deployment
 
 ---

@@ -820,3 +820,46 @@ if remaining:
 | MLflow experiment | smartvision_classification |
 | Inference benchmark | 10 warmup + 100 runs, mean ms |
 | RANDOM_STATE | 42 (everywhere) |
+| Docker Compose services | 5 core (redis, fastapi, prometheus, grafana, streamlit) |
+| FastAPI Docker mem_limit | 1.5g (690MB models + headroom) |
+| Grafana version | 11.1.0 (schemaVersion 39) |
+| Prometheus scrape interval | 15s |
+| Airflow executor | LocalExecutor (single-machine) |
+| Airflow image | apache/airflow:2.9.2 |
+| Airflow DAG schedule | 0 2 * * * (02:00 UTC daily) |
+
+---
+
+## Section 11 — Docker Compose, Grafana, and Airflow (Architecture & System Design)
+
+**Q. Walk me through your Docker Compose architecture for SmartVision AI.**
+
+> The core stack has 5 services all on a named Docker network called `smartvision`. Redis starts first — FastAPI depends on it with `condition: service_healthy` because the DriftDetector initialises a Redis connection at startup. FastAPI takes up to 3 minutes to load 4 CNNs + YOLOv8, so I set `start_period: 180s` on its healthcheck. Streamlit depends on FastAPI with `service_healthy` — Rule 22 in our project standards. Prometheus scrapes FastAPI's `/metrics` endpoint every 15 seconds and Grafana connects to Prometheus via its provisioning directory, so the datasource and dashboard auto-load on first start with zero manual configuration. The Airflow overlay is a separate compose file because it adds 4 more services (postgres, init, webserver, scheduler) and I didn't want to inflate the everyday development workflow.
+
+**Q. Why `condition: service_healthy` instead of `depends_on: [service]`?**
+
+> Plain `depends_on` only waits for the container to start, not for the service inside it to be ready. FastAPI takes 1-3 minutes to load ~690MB of model weights. If Streamlit starts before FastAPI is ready, every `requests.post("/classify")` call on startup raises `ConnectionError` and the user sees an error page. With `service_healthy`, Docker polls the FastAPI healthcheck — which returns 503 during loading and 200 only when models are loaded — and Streamlit container startup is genuinely gated on readiness. The `start_period: 180s` parameter tells Docker not to count early failures against the retry count, since we know it will fail during the loading window.
+
+**Q. You said `access: proxy` is critical in Grafana provisioning. Why?**
+
+> Grafana has two datasource access modes: `direct` and `proxy`. In `direct` mode, the user's browser makes the HTTP request to the datasource URL — which is `http://prometheus:9090`. Docker internal hostnames like `prometheus` are only resolvable within the Docker network. A browser outside Docker cannot resolve them, so every Grafana query would fail with a network error. In `proxy` mode, the Grafana server itself makes the request to Prometheus, which works because both containers are on the same `smartvision` network. This is a mistake that's easy to make because `direct` is the Grafana default when `access:` is omitted, and the error message ("Connection refused") doesn't tell you why.
+
+**Q. Why is `prom/prometheus` healthcheck using `wget` instead of `curl`?**
+
+> The `prom/prometheus` base image is a minimal Alpine-based image that includes `wget` but not `curl`. If you write `CMD curl -f http://localhost:9090/-/healthy`, Docker reports the healthcheck as failed with exit code 127 (command not found) — the container never reaches `healthy` state. I discovered this by running `docker compose ps` and seeing prometheus stuck at "starting". The fix is `CMD wget --quiet --tries=1 --spider http://localhost:9090/-/healthy`. This is a good general lesson: always verify which HTTP tools are available in the specific base image you're using.
+
+**Q. Your Dockerfile is reused for both FastAPI and Streamlit. How do you handle the healthcheck?**
+
+> I deliberately removed the `HEALTHCHECK` instruction from the Dockerfile. If you bake a `HEALTHCHECK CMD curl -f http://localhost:8000/health` into the image, it works for FastAPI but permanently marks the Streamlit container unhealthy — because Streamlit runs on port 8501, not 8000. Instead, each service defines its own healthcheck in `docker-compose.yml`: FastAPI checks port 8000, Streamlit checks Streamlit's built-in `/_stcore/health` endpoint on port 8501. Both services share the same image tag (`image: smartvision-app:latest`) so Docker BuildKit builds the image once and reuses it, saving build time.
+
+**Q. Explain the Airflow DAG design for drift-triggered retraining.**
+
+> The DAG is a 4-task linear pipeline scheduled daily at 02:00 UTC: `check_drift_alert → log_drift_classes → trigger_retrain → notify_complete`. The first task calls `GET /drift/status` on the FastAPI service — which is reachable because the Airflow containers join the `smartvision` Docker network. If no class has `alert=1`, it raises `AirflowSkipException`, which propagates the skip signal downstream, cleanly bypassing `log_drift_classes` and `trigger_retrain`. The `notify_complete` task always runs regardless, using `trigger_rule="all_done"`, so you always get a pipeline summary. `max_active_runs=1` prevents two concurrent retrain jobs if a run is slow. The actual retraining is a `BashOperator` placeholder — production would replace it with a Kubernetes job or Cloud Run trigger.
+
+**Q. Why `import requests` inside the function rather than at module level?**
+
+> Airflow's scheduler daemon re-parses every DAG file every 30 seconds by default. Module-level imports execute on every parse cycle. `import requests` on its own is fast, but in a project with many DAGs using many non-standard libraries, the cumulative import time causes scheduler heartbeat degradation. The Airflow community recommends keeping only `airflow.*` and stdlib imports at module level; everything else goes inside the callable. It's the same principle as lazy imports in web frameworks — only pay the cost when you actually need it.
+
+**Q. Why use `service_completed_successfully` for the `airflow-init` dependency?**
+
+> `airflow-init` is a one-shot container: it runs `airflow db migrate && airflow users create`, exits with code 0, and is done. `condition: service_healthy` waits for a running health check to pass — but an exited container never runs health checks again. The webserver would wait indefinitely for a container that will never become healthy. `condition: service_completed_successfully` is the correct condition for init containers: it's satisfied the moment the container exits with code 0. This requires Docker Compose v2.1+ and Docker Engine 20.10.7+, which is standard on any system running Docker Desktop in 2024.
