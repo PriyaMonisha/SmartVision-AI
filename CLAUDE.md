@@ -41,14 +41,14 @@ At the end of EVERY section, before declaring it complete:
 ---
 
 ## Current Status
-**Active Section:** All sections complete ✅
-**Last Working File:** docker-compose.yml, docker-compose.airflow.yml, dags/retrain_drift_dag.py
-**Last Decision Made:** Section 11 complete. 27 bugs pre-fixed in plan review (6 critical, 9 high).
-Key decisions: libgl1 not libgl1-mesa-glx (Bookworm), wget not curl for prom/prometheus healthcheck,
-access:proxy in Grafana datasource, clamp_min for cache hit rate, service_completed_successfully
-for airflow-init, AirflowSkipException at module level, requests import inside function for DAG
-parse speed, image:smartvision-app:latest shared between fastapi+streamlit services.
-Test B: stat=0.02, p=1.00 (no FP). Test C: 3/3 alerts (cup/chair/bottle, +0.3 shift, stat 0.60-0.82).
+**Active Section:** Post-completion ✅ — all 12 sections done + bonus features + HF deployment
+**Last Working File:** streamlit_app/api_client.py, pages/7_Webcam.py, api/routes/ensemble.py
+**Last Decision Made:** Post-completion audit + deployment session.
+Key work: repo audit (coverage.xml gitignored, .claude/ untracked), README.md created,
+pages/6_About.py added, bonus features (ensemble POST /ensemble, webcam pages/7_Webcam.py),
+HF Space deployed at huggingface.co/spaces/Moni38/smartvision-ai,
+docker-compose.airflow.yml YAML parse bug fixed (line 27 quoted),
+demo_banner() + is_hf_spaces() added to api_client.py for graceful HF Spaces degradation.
 
 **Section 5 Training Status — Round 1 (69 img/class, DOCUMENTED):**
 - VGG16:         59.5% val — overfitting Phase 2 (4,100 params/img)
@@ -168,9 +168,21 @@ When you see a POST-COMMIT REMINDER, do ALL THREE immediately:
   - RedisCache: added _client= kwarg for fakeredis injection (keyword-only, no breaking change)
   - pytest.ini: pythonpath=., --cov=api --cov=src, --strict-markers, coverage.xml
   - .github/workflows/ci.yml: lint (ruff check + format --check) → test (pytest), pip cache, coverage artifact
-  - spaces.yaml: sdk=streamlit, sdk_version=1.36.0, python_version=3.11, cpu-basic, 5 tags
+  - spaces.yaml: sdk=streamlit, sdk_version=1.37.0, python_version=3.11, cpu-basic, 5 tags
   - packages.txt: libgl1, libglib2.0-0 (HF Spaces system deps)
   - Bug pre-fixed in deploy: raise_server_exceptions=False in TestClient; mock_model as real nn.Module
+
+- [x] Post-completion: Audit + Bonus Features + HF Deployment ✅
+  - Repo audit: coverage.xml removed from git + added to .gitignore; .claude/ untracked + gitignored
+  - README.md created: architecture diagram, metrics table, quick-start (4 options), API reference
+  - pages/6_About.py: dataset table, model performance tabs, tech stack, engineering decisions
+  - Bonus feature — POST /ensemble: weighted avg ResNet50+EfficientNetB0+MobileNetV2 (weights ∝ test acc)
+  - Bonus feature — pages/7_Webcam.py: st.camera_input → /detect, continuous mode toggle
+  - pages/1_Classify.py: two tabs (Single Model + Ensemble with per-model breakdown)
+  - HF Space deployed: huggingface.co/spaces/Moni38/smartvision-ai (66 files via upload_file())
+  - YAML bug fixed: docker-compose.airflow.yml line 27 — colon-space in plain scalar → single-quoted
+  - Demo mode: is_hf_spaces() detects SPACE_ID env var; demo_banner() shown on all API-dependent pages
+  - api/main.py: http_errors middleware + models_loaded Prometheus metric added by linter
 
 ### In Progress 🔄
 (none)
@@ -262,6 +274,10 @@ Docker Compose | pytest | GitHub Actions CI
 | 39 | torch.load(..., weights_only=True) everywhere — security + FutureWarning |
 | 40 | __file__ undefined in Jupyter/Colab — wrap PROJECT_ROOT in try/except NameError |
 | 41 | Create INTERVIEW_PREP_SMARTVISION.md at Section 0/1; update after every section with interview-relevant Q&As only |
+| 42 | `.gitignore` needs `coverage.xml` explicitly — `.coverage` alone does NOT cover it |
+| 43 | YAML plain scalar with `: ` (colon+space) breaks parse — single-quote the entire value |
+| 44 | `spaces.yaml` sdk_version must EXACTLY match `streamlit==X.Y.Z` in requirements-hf.txt |
+| 45 | HF Spaces demo mode: `is_hf_spaces()` checks `SPACE_ID` env var; `demo_banner()` on API pages |
 
 ---
 
