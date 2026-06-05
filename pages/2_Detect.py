@@ -23,6 +23,7 @@ from streamlit_app.plotting import class_color
 st.set_page_config(page_title="Detect — SmartVision AI", layout="wide")
 st.title("Object Detection")
 st.caption("YOLOv8n via FastAPI /detect. Bounding boxes drawn on EXIF-corrected image.")
+api_client.demo_banner()
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:

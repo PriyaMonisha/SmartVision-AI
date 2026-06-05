@@ -71,9 +71,11 @@ with col_health:
         else:
             loaded = ", ".join(health.get("models_loaded", []))
             st.warning(f"Models loading… ({loaded or 'none yet'})")
-    except RuntimeError as e:
-        st.error(str(e))
-        st.info("Start FastAPI: `uvicorn api.main:app --reload`")
+    except RuntimeError:
+        if api_client.is_hf_spaces():
+            st.info("Demo mode — FastAPI not running on HF Spaces free tier.")
+        else:
+            st.warning("FastAPI offline. Run: `uvicorn api.main:app --reload`")
 
 # ── Key metrics ───────────────────────────────────────────────────────────────
 st.subheader("Project at a Glance")

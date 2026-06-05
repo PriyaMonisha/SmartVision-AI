@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import requests
 from requests.exceptions import ConnectionError, HTTPError, Timeout
 
@@ -26,6 +27,29 @@ ENSEMBLE_TIMEOUT = 90   # 3 models in sequence on CPU
 DETECT_TIMEOUT   = 45   # YOLO forward pass + NMS on CPU
 DRIFT_TIMEOUT    = 5    # status read should always be fast
 
+# ── Demo-mode detection (HuggingFace Spaces sets SPACE_ID automatically) ──────
+def is_hf_spaces() -> bool:
+    return bool(os.environ.get("SPACE_ID") or os.environ.get("SPACE_AUTHOR_NAME"))
+
+
+def demo_banner() -> None:
+    """Call at the top of any page that needs FastAPI. Shows a clear demo-mode notice."""
+    import streamlit as st
+    if is_hf_spaces():
+        st.info(
+            "**Demo mode** — this page requires the FastAPI backend which does not run "
+            "on HuggingFace Spaces free tier. "
+            "Run locally with `docker compose up` for full functionality. "
+            "Pages that work here: Model Comparison, EDA Insights, About.",
+            icon="ℹ️",
+        )
+    else:
+        st.warning(
+            "FastAPI backend not detected. Start it with: "
+            "`uvicorn api.main:app --reload --host 0.0.0.0 --port 8000`",
+            icon="⚠️",
+        )
+
 # ── Module-level singleton session ────────────────────────────────────────────
 _SESSION: requests.Session | None = None
 
@@ -41,9 +65,14 @@ def _session() -> requests.Session:
 # ── Centralised error handler ─────────────────────────────────────────────────
 def _handle_error(e: Exception, endpoint: str) -> None:
     if isinstance(e, ConnectionError):
+        if is_hf_spaces():
+            raise RuntimeError(
+                "FastAPI backend is not available on HuggingFace Spaces free tier. "
+                "Run locally with `docker compose up` for full inference functionality."
+            )
         raise RuntimeError(
             f"FastAPI not reachable at {FASTAPI_URL}. "
-            "Start uvicorn with: uvicorn api.main:app --reload"
+            "Start with: uvicorn api.main:app --reload --host 0.0.0.0 --port 8000"
         )
     if isinstance(e, Timeout):
         raise RuntimeError(

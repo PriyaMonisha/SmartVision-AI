@@ -23,6 +23,7 @@ from streamlit_app.plotting import class_color
 st.set_page_config(page_title="Webcam Detection — SmartVision AI", layout="wide")
 st.title("Live Webcam Detection")
 st.caption("Captures a frame from your webcam and runs YOLOv8n detection via FastAPI /detect.")
+api_client.demo_banner()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:

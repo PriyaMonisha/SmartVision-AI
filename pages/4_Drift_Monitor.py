@@ -19,6 +19,7 @@ from streamlit_app.plotting import drift_gauge
 
 st.set_page_config(page_title="Drift Monitor — SmartVision AI", layout="wide")
 st.title("KS Drift Monitor")
+api_client.demo_banner()
 st.caption(
     "Monitors per-class confidence score distribution vs the MobileNet val-split baseline "
     "(n=30/class). Alert fires when KS stat > 0.10 AND p-value < 0.05 (double-gate)."

@@ -22,6 +22,7 @@ from streamlit_app import api_client
 st.set_page_config(page_title="Classify — SmartVision AI", layout="wide")
 st.title("Image Classification")
 st.caption("Single-model or weighted ensemble via FastAPI.")
+api_client.demo_banner()
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
