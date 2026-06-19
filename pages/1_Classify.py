@@ -64,7 +64,15 @@ tab_single, tab_ensemble = st.tabs(["Single Model", "Ensemble (3 CNNs)"])
 
 # ── TAB 1: Single model ───────────────────────────────────────────────────────
 with tab_single:
-    model_name = st.selectbox("Model", ["resnet50", "mobilenet"], index=0)
+    try:
+        _health = api_client.get_health()
+        _cnn_loaded = [m for m in _health.get("models_loaded", []) if m != "yolo"]
+    except Exception:
+        _cnn_loaded = ["resnet50", "mobilenet"]
+    if not _cnn_loaded:
+        st.warning("No CNN models loaded yet — please wait and refresh.")
+        st.stop()
+    model_name = st.selectbox("Model", _cnn_loaded, index=0)
 
     with st.spinner(f"Running {model_name.upper()} inference…"):
         try:
@@ -80,9 +88,12 @@ with tab_single:
     col_img, col_chart = st.columns([1, 2])
 
     with col_img:
-        st.image(image, caption=uploaded_file.name, use_container_width=True)
+        st.image(image, caption=uploaded_file.name)
         b_col, t_col = st.columns(2)
-        b_col.success("Cache hit") if cached else b_col.info("Fresh inference")
+        if cached:
+            b_col.success("Cache hit")
+        else:
+            b_col.info("Fresh inference")
         t_col.metric("Inference", f"{inf_time:.1f} ms")
 
     with col_chart:
@@ -132,12 +143,15 @@ with tab_ensemble:
         col1.metric("Ensemble confidence", f"{ens_preds[0]['confidence']:.1%}")
     col2.metric("Inference time", f"{inf_time:.1f} ms")
     col2.metric("Models used", len(models_used))
-    col3.success("Cache hit") if cached else col3.info("Fresh inference")
+    if cached:
+        col3.success("Cache hit")
+    else:
+        col3.info("Fresh inference")
 
     col_img, col_chart = st.columns([1, 2])
 
     with col_img:
-        st.image(image, caption=uploaded_file.name, use_container_width=True)
+        st.image(image, caption=uploaded_file.name)
 
     with col_chart:
         if ens_preds:

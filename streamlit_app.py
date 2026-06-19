@@ -65,11 +65,11 @@ with col_health:
     st.subheader("API Status")
     try:
         health = api_client.get_health()
+        raw = health.get("models_loaded", [])
+        loaded = ", ".join(raw) if isinstance(raw, list) else str(raw)
         if health.get("models_ready"):
-            loaded = ", ".join(health.get("models_loaded", []))
             st.success(f"All models loaded ({loaded})")
         else:
-            loaded = ", ".join(health.get("models_loaded", []))
             st.warning(f"Models loading… ({loaded or 'none yet'})")
     except RuntimeError:
         if api_client.is_hf_spaces():

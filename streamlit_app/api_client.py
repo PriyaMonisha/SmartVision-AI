@@ -33,7 +33,7 @@ def is_hf_spaces() -> bool:
 
 
 def demo_banner() -> None:
-    """Call at the top of any page that needs FastAPI. Shows a clear demo-mode notice."""
+    """Call at the top of any page that needs FastAPI. Shows a notice only when backend is unreachable."""
     import streamlit as st
     if is_hf_spaces():
         st.info(
@@ -43,7 +43,10 @@ def demo_banner() -> None:
             "Pages that work here: Model Comparison, EDA Insights, About.",
             icon="ℹ️",
         )
-    else:
+        return
+    try:
+        _session().get(f"{FASTAPI_URL}/health", timeout=HEALTH_TIMEOUT)
+    except Exception:
         st.warning(
             "FastAPI backend not detected. Start it with: "
             "`uvicorn api.main:app --reload --host 0.0.0.0 --port 8000`",

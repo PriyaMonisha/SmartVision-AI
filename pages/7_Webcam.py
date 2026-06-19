@@ -98,7 +98,7 @@ for det in detections:
     draw.text((x1, y1 - 2), label, fill="white", font=font, anchor="lb")
 
 # ── Display annotated image ───────────────────────────────────────────────────
-st.image(pil_img, use_container_width=True, caption="YOLOv8n detections")
+st.image(pil_img, caption="YOLOv8n detections")
 
 # ── Detection table ───────────────────────────────────────────────────────────
 if detections:

@@ -88,7 +88,7 @@ for det in detections:
     draw.text((x1 + 4, y1 - 15), label, fill="white")
 
 # ── Result-first layout (Rule 12) ─────────────────────────────────────────────
-st.image(annotated, caption=f"{uploaded_file.name} — {len(detections)} detection(s)", use_container_width=True)
+st.image(annotated, caption=f"{uploaded_file.name} — {len(detections)} detection(s)")
 
 badge_col, time_col, det_col = st.columns(3)
 if cached:
