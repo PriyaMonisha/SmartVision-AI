@@ -1,0 +1,18 @@
+# ============================================================
+# SmartVision AI — HuggingFace Spaces requirements
+# Streamlit demo-mode UI only — no torch/ultralytics/mlflow/fastapi.
+# Pages never call models directly (no_model_in_pages rule); FastAPI backend
+# doesn't run on the free tier, so none of the inference stack is needed here.
+# pandas/numpy come transitively via streamlit itself.
+# Full dev/training/serving requirements live in requirements.txt.
+#
+# Deployed automatically by .github/workflows/deploy-spaces.yml on every
+# push to main — this file is swapped in as requirements.txt for the Space
+# only; the copy on main stays untouched.
+# ============================================================
+
+streamlit==1.37.0
+plotly==5.22.0
+Pillow==10.3.0
+requests==2.32.3
+pydantic-settings==2.3.4

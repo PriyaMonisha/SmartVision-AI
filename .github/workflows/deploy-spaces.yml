@@ -1,0 +1,33 @@
+name: Deploy to HF Spaces
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Space runs sdk: streamlit, which always installs the root
+      # requirements.txt — swap in the lean, torch-free version so the
+      # free-tier build stays fast. main's own requirements.txt (used by
+      # docker-compose/training/CI) is never modified by this workflow.
+      - name: Swap in lean Space requirements
+        run: cp requirements-spaces.txt requirements.txt
+
+      - name: Commit lean requirements for Space
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add requirements.txt
+          git commit -m "chore: lean requirements.txt for HF Spaces deploy"
+
+      - name: Push to Hugging Face Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git push --force https://Moni38:${HF_TOKEN}@huggingface.co/spaces/Moni38/smartvision-ai HEAD:main
