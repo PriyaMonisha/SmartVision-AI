@@ -1,3 +1,15 @@
+---
+title: SmartVision AI
+emoji: 👁️
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+sdk_version: "1.37.0"
+python_version: "3.11"
+app_file: streamlit_app.py
+pinned: false
+---
+
 # SmartVision AI — Intelligent Multi-Class Object Recognition System
 
 > **2,500 COCO images · 4 CNN classifiers · YOLOv8 detection · Full MLOps stack**
