@@ -19,12 +19,21 @@ jobs:
       - name: Swap in lean Space requirements
         run: cp requirements-spaces.txt requirements.txt
 
-      - name: Commit lean requirements for Space
+      # HF Spaces reads its config only from YAML frontmatter at the top of
+      # README.md (spaces.yaml itself isn't read by HF). main's README.md
+      # stays frontmatter-free for a clean GitHub display; this prepends
+      # spaces.yaml's content as frontmatter for the Space copy only.
+      - name: Prepend HF Spaces frontmatter to README (Space copy only)
+        run: |
+          { echo '---'; cat spaces.yaml; echo '---'; echo; cat README.md; } > README.tmp.md
+          mv README.tmp.md README.md
+
+      - name: Commit Space-only changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add requirements.txt
-          git commit -m "chore: lean requirements.txt for HF Spaces deploy"
+          git add requirements.txt README.md
+          git commit -m "chore: lean requirements + HF frontmatter for Spaces deploy"
 
       - name: Push to Hugging Face Spaces
         env:
